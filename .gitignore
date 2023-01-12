@@ -1,0 +1,12 @@
+*~
+*.pyc
+*.pyo
+*.so
+build/
+dist/
+*.eggs
+*.egg-info/
+__pycache__/
+.cache/
+pip-wheel-metadata
+*idea
