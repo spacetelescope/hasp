@@ -511,6 +511,8 @@ def main(indir, outdir, version=VERSION, clobber=False):
                             abutted = products[mode]
                         else:
                             abutted = abut(abutted, products[mode])
+                            abutted.propid = products[mode].propid
+                            abutted.rootname = products[mode].rootname
                             dowrite = True
                 if dowrite is True:
                     filename = create_output_file_name(abutted, producttype, version, level=level)
@@ -607,6 +609,8 @@ def main(indir, outdir, version=VERSION, clobber=False):
                     for i in range(1, len(used)):
                         abut_gr = used.iloc[i]["ins"] + "/" + used.iloc[i]["gratings"]
                         abutted = abut(abutted, products[abut_gr])
+                        abutted.propid = products[abut_gr].propid
+                        abutted.rootname = products[abut_gr].rootname
                     filename = create_output_file_name(abutted, producttype, version, level=level)
                     filename = os.path.join(outdir, filename)
                     abutted.write(filename, clobber, level=level, version=version)
@@ -726,6 +730,8 @@ def main(indir, outdir, version=VERSION, clobber=False):
                             abutted = products[mode]
                         else:
                             abutted = abut(abutted, products[mode])
+                            abutted.propid = products[mode].propid
+                            abutted.rootname = products[mode].rootname
                             dowrite = True
                 if dowrite is True:
                     filename = create_output_file_name(abutted, producttype, version, level=level)
@@ -822,6 +828,8 @@ def main(indir, outdir, version=VERSION, clobber=False):
                     for i in range(1, len(used)):
                         abut_gr = used.iloc[i]["ins"] + "/" + used.iloc[i]["gratings"]
                         abutted = abut(abutted, products[abut_gr])
+                        abutted.propid = products[abut_gr].propid
+                        abutted.rootname = products[abut_gr].rootname
                     filename = create_output_file_name(abutted, producttype, version, level=level)
                     filename = os.path.join(outdir, filename)
                     abutted.write(filename, clobber, level=level, version=version)
