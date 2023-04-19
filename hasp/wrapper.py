@@ -137,6 +137,14 @@ class HASP_SegmentList(SegmentList):
 
         # set up the table columns
         nelements = len(self.output_wavelength)
+        goodpixels = np.where(self.output_exptime != 0.0)
+        if len(goodpixels) != 0:
+            first = goodpixels[0][0]
+            last = goodpixels[0][-1] + 1
+            nelements = last - first
+        else:
+            first = 0
+            last = nelements
         rpt = str(nelements)
 
         # Table with co-added spectrum
@@ -149,11 +157,11 @@ class HASP_SegmentList(SegmentList):
         table1 = fits.BinTableHDU.from_columns(cd, nrows=1, header=hdr1)
 
         # populate the table
-        table1.data['WAVELENGTH'] = self.output_wavelength.copy()
-        table1.data['FLUX'] = self.output_flux.copy()
-        table1.data['ERROR'] = self.output_errors.copy()
-        table1.data['SNR'] = self.signal_to_noise.copy()
-        table1.data['EFF_EXPTIME'] = self.output_exptime.copy()
+        table1.data['WAVELENGTH'] = self.output_wavelength[first:last].copy()
+        table1.data['FLUX'] = self.output_flux[first:last].copy()
+        table1.data['ERROR'] = self.output_errors[first:last].copy()
+        table1.data['SNR'] = self.signal_to_noise[first:last].copy()
+        table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
         # HLSP primary header
         hdr0 = fits.Header()
         hdr0['EXTEND'] = ('T', 'FITS file may contain extensions')

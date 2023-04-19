@@ -41,14 +41,20 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
             score = score // 2
     transition_wavelengths = []
     for grating in used_gratings_list:
-        transition_wavelengths.append({'grating': grating['name'], 'wavelength': grating['minwave'], 'delta': grating['score']})
-        transition_wavelengths.append({'grating': grating['name'], 'wavelength': grating['maxwave'], 'delta': -grating['score']})
+        actual_minwave = productdict[grating['name']].first_good_wavelength
+        actual_maxwave = productdict[grating['name']].last_good_wavelength
+        min_wavelength = max(actual_minwave, grating['minwave'])
+        max_wavelength = min(actual_maxwave, grating['maxwave'])
+        if min_wavelength != grating['minwave'] or max_wavelength != grating['maxwave']:
+            print('Transition wavelengths tweaked')
+        transition_wavelengths.append({'grating': grating['name'], 'wavelength': min_wavelength, 'delta': grating['score']})
+        transition_wavelengths.append({'grating': grating['name'], 'wavelength': max_wavelength, 'delta': -grating['score']})
     transition_wavelengths = sorted(transition_wavelengths, key=lambda wavelength: wavelength['wavelength'])
     cumulative_sum = 0
     this_grating = None
     abutted_product = None
     nwavelengths = len(transition_wavelengths)
-    for entry in range(nwavelengths-1):
+    for entry in range(nwavelengths):
         value = transition_wavelengths[entry]
         cumulative_sum = cumulative_sum + value['delta']
         highest_power_of_2 = hp2(cumulative_sum, ngratings)
@@ -57,14 +63,17 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
         if n_with_this_score == 1:
             new_grating = grating_rows[0]['name']
         elif n_with_this_score == 0:
-            new_grating = ''
+            new_grating = None
         else:
             print("Unexpected number of gratings with score {}: {}".format(highest_power_of_two, n_with_this_score))
             new_grating = "Error"
         if new_grating != this_grating:
             if this_grating is None:
                 print('Starting at the short wavelength end with grating {}'.format(new_grating))
-                abutted_product = productdict[new_grating]
+                abutted_product = abut(None, productdict[new_grating], value['wavelength'])
+            elif new_grating is None:
+                print('Truncating current grating at {}'.format(value['wavelength']))
+                abutted_product = abut(abutted_product, None, value['wavelength'])
             else:
                 print('Abutting {} product to current result'.format(new_grating))
                 print('With a transition wavelength of {}'.format(value['wavelength']))
@@ -88,6 +97,7 @@ def get_used_gratings(productlist):
 def hp2(number, largest_power):
     # Returns the highest power of 2 that is <= number, up to
     # and including 2**largest_power
+    if number == 0: return 0
     for i in range(largest_power, 0, -1):
         if number & (2 ** i):
             break
@@ -167,12 +177,60 @@ def abut(product_short, product_long, transition_wavelength):
             print(f'{product_short.target} and {product_long.target}')
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
+    elif product_short is not None:
+        output_grating = product_short.grating
+        product_abutted = product_short.__class__('', output_grating)
+        short_indices = np.where(product_short.output_wavelength > transition_wavelength)
+        transition_index_short = short_indices[0][0]
+        nout = len(product_short.output_wavelength[:transition_index_short])
+        product_abutted.nelements = nout
+        product_abutted.output_wavelength = np.zeros(nout)
+        product_abutted.output_flux = np.zeros(nout)
+        product_abutted.output_errors = np.zeros(nout)
+        product_abutted.signal_to_noise = np.zeros(nout)
+        product_abutted.output_exptime = np.zeros(nout)
+        product_abutted.output_wavelength = product_short.output_wavelength[:transition_index_short]
+        product_abutted.output_flux = product_short.output_flux[:transition_index_short]
+        product_abutted.output_errors = np.abs(product_short.output_errors[:transition_index_short])
+        product_abutted.signal_to_noise = product_short.signal_to_noise[:transition_index_short]
+        product_abutted.output_exptime = product_short.output_exptime[:transition_index_short]
+        product_abutted.primary_headers = product_short.primary_headers
+        product_abutted.first_headers = product_short.first_headers
+        product_abutted.grating = product_short.grating
+        product_abutted.instrument = product_short.instrument
+        product_abutted.target = product_short.target
+        target_matched = True
+        product_abutted.targnames = [product_short.target]
+        product_abutted.propid = product_short.propid
+        product_abutted.rootname = product_short.rootname
+    elif product_long is not None:
+        output_grating = product_long.grating
+        product_abutted = product_long.__class__('', output_grating)
+        long_indices = np.where(product_long.output_wavelength > transition_wavelength)
+        transition_index_long = long_indices[0][0]
+        nout = len(product_long.output_wavelength[transition_index_long:])
+        product_abutted.nelements = nout
+        product_abutted.output_wavelength = np.zeros(nout)
+        product_abutted.output_flux = np.zeros(nout)
+        product_abutted.output_errors = np.zeros(nout)
+        product_abutted.signal_to_noise = np.zeros(nout)
+        product_abutted.output_exptime = np.zeros(nout)
+        product_abutted.output_wavelength = product_long.output_wavelength[transition_index_long:]
+        product_abutted.output_flux = product_long.output_flux[transition_index_long:]
+        product_abutted.output_errors = np.abs(product_long.output_errors[transition_index_long:])
+        product_abutted.signal_to_noise = product_long.signal_to_noise[transition_index_long:]
+        product_abutted.output_exptime = product_long.output_exptime[transition_index_long:]
+        product_abutted.primary_headers = product_long.primary_headers
+        product_abutted.first_headers = product_long.first_headers
+        product_abutted.grating = product_long.grating
+        product_long.target = product_long.get_targname()
+        product_abutted.instrument = product_long.instrument
+        product_abutted.target = product_long.target
+        target_matched = True
+        product_abutted.targnames = [product_long.target]
+        product_abutted.propid = product_long.propid
+        product_abutted.rootname = product_long.rootname
     else:
-        if product_short is not None:
-            product_abutted = product_short
-        elif product_long is not None:
-            product_abutted = product_long
-        else:
-            product_abutted = None
+        product_abutted = None
     product_abutted.targ_ra, product_abutted.targ_dec = product_abutted.get_coords()
     return product_abutted
