@@ -68,7 +68,7 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
             print("Unexpected number of gratings with score {}: {}".format(highest_power_of_two, n_with_this_score))
             new_grating = "Error"
         if new_grating != this_grating:
-            if this_grating is None:
+            if abutted_product is None:
                 print('Starting at the short wavelength end with grating {}'.format(new_grating))
                 abutted_product = abut(None, productdict[new_grating], value['wavelength'])
             elif new_grating is None:
