@@ -12,7 +12,7 @@ Installing the package will instll the wrapper script: swrapper.
 
 To run:
 
-    swrapper -i . -o products
+    swrapper -i . -o products -t threshold
 
 ```
     -i --input_directory
@@ -23,4 +23,8 @@ To run:
     -o --output_directory
 
         The name of the directory containing the coadded spectral products
+
+    -t --threshold
+
+        Threshold for flux-based filtering.  Optional, default value is -50
 ```
