@@ -180,8 +180,8 @@ def abut(product_short, product_long, transition_wavelength):
     elif product_short is not None:
         output_grating = product_short.grating
         product_abutted = product_short.__class__('', output_grating)
-        short_indices = np.where(product_short.output_wavelength > transition_wavelength)
-        transition_index_short = short_indices[0][0]
+        short_indices = np.where(product_short.output_wavelength < transition_wavelength)
+        transition_index_short = short_indices[0][-1]
         nout = len(product_short.output_wavelength[:transition_index_short])
         product_abutted.nelements = nout
         product_abutted.output_wavelength = np.zeros(nout)
