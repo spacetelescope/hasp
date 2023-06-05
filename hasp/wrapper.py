@@ -92,7 +92,7 @@ class HASP_SegmentList(SegmentList):
                             hdr0['DETECTOR'] in STIS_NON_CCD_DETECTORS:
                         sdqflags -= 16
                     exptime = hdr1['EXPTIME']
-                    for row in data:
+                    for rownum, row in enumerate(data):
                         cenwave = hdr0['cenwave']
                         if cenwave in self.bad_segments.keys():
                             if row['SEGMENT'] in self.bad_segments[cenwave]:
@@ -102,6 +102,8 @@ class HASP_SegmentList(SegmentList):
                         segment.data = row
                         segment.sdqflags = sdqflags
                         segment.exptime = exptime
+                        segment.filename = self.datasets[i]
+                        segment.rownum = rownum
                         if self.instrument == 'COS':
                             cenwave = hdr0['CENWAVE']
                             fppos = hdr0['FPPOS']
@@ -110,6 +112,10 @@ class HASP_SegmentList(SegmentList):
 
     def write(self, filename, overwrite=False, level="", version=""):
 
+        if overwrite == False:
+            if os.path.exists(filename):
+                print(f'{filename} already exists and overwrite=False, skipping write')
+                return
         self.target = self.get_targname()
         self.targ_ra, self.targ_dec = self.get_coords()
 
@@ -324,6 +330,73 @@ class HASP_SegmentList(SegmentList):
             return np.sum(vals)
         elif method == "arr":
             return np.array(vals)
+    
+    def calculate_statistics(self, verbose=False):
+        """Calcuate statistics for each of the exposures that
+        contribute to the coadded product
+        
+        """
+        statistics = []
+        nsegments = len(self.members)
+        if nsegments == 1:
+            segment = self.members[0]
+            filename = segment.filename
+            rownum = 0
+            ndeviations = len(segment.data)
+            a0 = np.zeros(1)
+            return [filename], [rownum], [ndeviations], a0, a0, a0, a0
+        mean_deviation = np.zeros(nsegments)
+        median_deviation = np.zeros(nsegments)
+        mean_squared_deviation = np.zeros(nsegments)
+        median_squared_deviation = np.zeros(nsegments)
+        ndeviations = np.zeros(nsegments, dtype='int')
+        filename = []
+        rownum = []
+        for nseg, segment in enumerate(self.members):
+            goodpixels = np.where((segment.data['dq'] & segment.sdqflags) == 0)
+            if len(goodpixels[0]) == 0:
+                print('No good pixels for segment #{}'.format(nseg))
+                continue
+            wavelength = segment.data['wavelength'][goodpixels]
+            indices = self.wavelength_to_index(wavelength)
+            npts = len(indices)
+            flux = segment.data['flux'][goodpixels]
+            error = segment.data['error'][goodpixels]
+            deviation =  np.zeros(npts)
+            deviation_squared = np.zeros(npts)
+            ndeviations[nseg] = 0
+            for i in range(npts):
+                if error[i] != 0.0 and segment.exptime != self.output_exptime[indices[i]]:
+                    deviation[i] = (flux[i] - self.output_flux[indices[i]])
+                    deviation[i] = deviation[i] / error[i]
+                    ndeviations[nseg] = ndeviations[nseg] + 1
+                    deviation_squared[i] = deviation[i] * deviation[i]
+            nonzero_deviations = np.where(deviation != 0.0)
+            n_nonzero = len(nonzero_deviations[0])
+            if n_nonzero > 0:
+                sorted_nonzero_deviations = deviation[nonzero_deviations]
+                sorted_nonzero_deviations.sort()
+                sorted_nonzero_squared_deviations = deviation_squared[nonzero_deviations]
+                mean_deviation[nseg] = deviation[nonzero_deviations].mean()
+                mean_squared_deviation[nseg] = deviation_squared[nonzero_deviations].mean()
+                median_deviation[nseg] = np.median(sorted_nonzero_deviations)
+                median_squared_deviation[nseg] = np.median(sorted_nonzero_squared_deviations)
+                filename.append(segment.filename)
+                rownum.append(segment.rownum)
+            else:
+                mean_deviation[nseg] = 0.0
+                median_deviation[nseg] = 0.0
+                mean_squared_deviation[nseg] = 0.0
+                median_squared_deviation[nseg] = 0.0
+            if verbose:
+                print(f'for segment {nseg}')
+                print(f'{ndeviations[nseg]} non-zero deviations')
+                print(f'Mean deviation = {mean_deviation[nseg]}')
+                print(f'Mean squared deviation = {mean_squared_deviation[nseg]}')
+                print(f'Median deviation = {median_deviation[nseg]}')
+                print(f'Median squared deviation = {median_squared_deviation[nseg]}')
+
+        return filename, rownum, ndeviations, mean_deviation, median_deviation, mean_squared_deviation, median_squared_deviation
 
 class HASP_COSSegmentList(COSSegmentList, HASP_SegmentList):
     pass
@@ -337,7 +410,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, version=VERSION, clobber=False):
+def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
     outdir_inplace = False
     if outdir is None:
         HLSP_DIR = os.getenv('HLSP_DIR')
@@ -361,6 +434,7 @@ def main(indir, outdir, version=VERSION, clobber=False):
     proposaldict = {}
     spec1d = glob.glob(os.path.join(indir, '*_x1d.fits')) + glob.glob(os.path.join(indir, '*_sx1.fits'))
     spec1d.sort()
+#    spec1d = prefilter(spec1d, filters=['NOGOODPIXELS', 'ZERO_EXP_TIME', 'PLANNEDVSACTUAL'])
 #
 # Create the list of modes
     print('Creating list of unique modes from these files:')
@@ -442,51 +516,62 @@ def main(indir, outdir, version=VERSION, clobber=False):
                 if (instrument, grating, detector) not in uniqmodes:
                     uniqmodes.append((instrument, grating, detector))
                 files_to_import = visitdict[uniqmode]
-                print('Importing files {}'.format(files_to_import))
-                # this instantiates the class
-                if instrument == 'COS':
-                    prod = HASP_COSSegmentList(None, path=indir)
-                elif instrument == 'STIS':
-                    if detector == 'CCD':
-                        prod = HASP_CCDSegmentList(None, path=indir)
+                # Flux based filtering loop
+                while True:
+                    print('Importing files {}'.format(files_to_import))
+                    # this instantiates the class
+                    if instrument == 'COS':
+                        prod = HASP_COSSegmentList(None, path=indir)
+                    elif instrument == 'STIS':
+                        if detector == 'CCD':
+                            prod = HASP_CCDSegmentList(None, path=indir)
+                        else:
+                            prod = HASP_STISSegmentList(None, path=indir)
                     else:
-                        prod = HASP_STISSegmentList(None, path=indir)
-                else:
-                    print(f'Unknown mode [{instrument}, {grating}, {detector}]')
-                    continue
-                if prod is not None:
-                    prod.import_data(files_to_import)
-                prod.target = prod.get_targname()
-                prod.targ_ra, prod.targ_dec = prod.get_coords()
-                # these two calls perform the main functions
-                if len(prod.members) > 0:
-                    prod.create_output_wavelength_grid()
-                    prod.coadd()
-                    if prod.first_good_wavelength is None:
-                        print("No good data, skipping")
-                        continue                       
-                    # this writes the output file
-                    # If making HLSPs for a DR, put them in the official folder
+                        print(f'Unknown mode [{instrument}, {grating}, {detector}]')
+                        continue
+                    if prod is not None:
+                        prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
-                    target = prod.target.lower()
-                    if "." in target:
-                        dir_target = rename_target(target)
+                    # these two calls perform the main functions
+                    if len(prod.members) > 0:
+                        prod.create_output_wavelength_grid()
+                        prod.coadd()
+                        if prod.first_good_wavelength is None:
+                            print("No good data, skipping")
+                            continue
+                        result = prod.calculate_statistics()
+                        files_to_cull = analyse_result(result, threshold=threshold)
+                        if files_to_cull == []:
+                            break
+                        else:
+                            print("Removing files from list:")
+                            print(files_to_cull)
+                            cull_files(files_to_cull, files_to_import)
                     else:
-                        dir_target = target
-                    if outdir_inplace is True:
-                        outdir = os.path.join(HLSP_DIR, dir_target, version)
-                    if not os.path.exists(outdir):
-                        os.makedirs(outdir)
-                    outname = create_output_file_name(prod, producttype, version, level=level)
-                    outname = os.path.join(outdir, outname)
-                    prod.write(outname, clobber, level=level, version=version)
-                    print(f"   Wrote {outname}")
-                    productlist.append(prod)
-                    products[setting] = prod
-                    productdict[setting] = prod
+                        print(f'No valid data for grating {grating}')
+                # this writes the output file
+                # If making HLSPs for a DR, put them in the official folder
+                prod.target = prod.get_targname()
+                prod.targ_ra, prod.targ_dec = prod.get_coords()
+                target = prod.target.lower()
+                if "." in target:
+                    dir_target = rename_target(target)
                 else:
-                    print(f"No valid data for grating {grating}")
+                    dir_target = target
+                if outdir_inplace is True:
+                    outdir = os.path.join(HLSP_DIR, dir_target, version)
+                if not os.path.exists(outdir):
+                    os.makedirs(outdir)
+                outname = create_output_file_name(prod, producttype, version, level=level)
+                outname = os.path.join(outdir, outname)
+#                write_stats(result, outname)
+                prod.write(outname, clobber, level=level, version=version)
+                print(f"   Wrote {outname}")
+                productlist.append(prod)
+                products[setting] = prod
+                productdict[setting] = prod
 
             abutted_product = create_level4_products(productlist, productdict, producttype, uniqmodes, outdir)
             if abutted_product is not None:
@@ -536,52 +621,61 @@ def main(indir, outdir, version=VERSION, clobber=False):
                 if (instrument, grating, detector) not in uniqmodes:
                     uniqmodes.append((instrument, grating, detector))
                 files_to_import = proposaldict[uniqmode]
-                print('Importing files {}'.format(files_to_import))
-                # this instantiates the class
-                if instrument == 'COS':
-                    prod = HASP_COSSegmentList(None, path=indir)
-                elif instrument == 'STIS':
-                    if detector == 'CCD':
-                        prod = HASP_CCDSegmentList(None, path=indir)
+                # Flux filtering loop
+                while True:
+                    print('Importing files {}'.format(files_to_import))
+                    # this instantiates the class
+                    if instrument == 'COS':
+                        prod = HASP_COSSegmentList(None, path=indir)
+                    elif instrument == 'STIS':
+                        if detector == 'CCD':
+                            prod = HASP_CCDSegmentList(None, path=indir)
+                        else:
+                            prod = HASP_STISSegmentList(None, path=indir)
                     else:
-                        prod = HASP_STISSegmentList(None, path=indir)
-                else:
-                    print(f'Unknown mode [{instrument}, {grating}, {detector}]')
-                    continue
-                if prod is not None:
-                    prod.import_data(files_to_import)
-                prod.target = prod.get_targname()
-                prod.targ_ra, prod.targ_dec = prod.get_coords()
-
-                # these two calls perform the main functions
-                if len(prod.members) > 0:
-                    prod.create_output_wavelength_grid()
-                    prod.coadd()
-                    if prod.first_good_wavelength is None:
-                        print("No good data, skipping")
+                        print(f'Unknown mode [{instrument}, {grating}, {detector}]')
                         continue
-                    # this writes the output file
-                    # If making HLSPs for a DR, put them in the official folder
+                    if prod is not None:
+                        prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
-                    target = prod.target.lower()
-                    if "." in target:
-                        dir_target = rename_target(target)
+
+                    # these two calls perform the main functions
+                    if len(prod.members) > 0:
+                        prod.create_output_wavelength_grid()
+                        prod.coadd()
+                        if prod.first_good_wavelength is None:
+                            print("No good data, skipping")
+                            continue
+                        result = prod.calculate_statistics()
+                        files_to_cull = analyse_result(result, threshold=threshold)
+                        if files_to_cull == []:
+                            break
+                        else:
+                            cull_files(files_to_cull, files_to_import)
                     else:
-                        dir_target = target
-                    if outdir_inplace is True:
-                        outdir = os.path.join(HLSP_DIR, dir_target, version)
-                    if not os.path.exists(outdir):
-                        os.makedirs(outdir)
-                    outname = create_output_file_name(prod, producttype, version, level=level)
-                    outname = os.path.join(outdir, outname)
-                    prod.write(outname, clobber, level=level, version=version)
-                    print(f"   Wrote {outname}")
-                    products[f'{instrument}/{grating}'] = prod
-                    productlist.append(prod)
-                    productdict[setting] = prod
+                        print(f"No valid data for grating {grating}")
+
+                # this writes the output file
+                # If making HLSPs for a DR, put them in the official folder
+                prod.target = prod.get_targname()
+                prod.targ_ra, prod.targ_dec = prod.get_coords()
+                target = prod.target.lower()
+                if "." in target:
+                    dir_target = rename_target(target)
                 else:
-                    print(f"No valid data for grating {grating}")
+                    dir_target = target
+                if outdir_inplace is True:
+                    outdir = os.path.join(HLSP_DIR, dir_target, version)
+                if not os.path.exists(outdir):
+                    os.makedirs(outdir)
+                outname = create_output_file_name(prod, producttype, version, level=level)
+                outname = os.path.join(outdir, outname)
+                prod.write(outname, clobber, level=level, version=version)
+                print(f"   Wrote {outname}")
+                products[f'{instrument}/{grating}'] = prod
+                productlist.append(prod)
+                productdict[setting] = prod
 
             abutted_product = create_level4_products(productlist, productdict, producttype, uniqmodes, outdir)
             if abutted_product is not None:
@@ -589,6 +683,56 @@ def main(indir, outdir, version=VERSION, clobber=False):
                 filename = os.path.join(outdir, filename)
                 abutted_product.write(filename, clobber, level=level, version=version)
                 print(f"   Wrote {filename}")
+
+def analyse_result(results, threshold=-50):
+    files_to_cull = []
+    input_filenames = results[0]
+    row_numbers = results[1]
+    npts = results[2]
+    median_deviation = results[4]
+    scaledmedian = median_deviation * np.sqrt(npts)
+    rows_to_cull = np.where(scaledmedian < threshold)
+    for row in rows_to_cull[0]:
+        filename = input_filenames[row]
+        rownum = row_numbers[row]
+        print(f'Segment #{rownum} from file {filename} has scaled median = {scaledmedian[row]}')
+        if input_filenames[row] not in files_to_cull:
+            print(f'Removing file {filename} from product')
+            files_to_cull.append(input_filenames[row])
+        else:
+            print(f'File {filename} already selected for removal from product')
+    return files_to_cull
+    
+def cull_files(files_to_cull, file_list):
+    for thisfile in files_to_cull:
+        if thisfile in file_list:
+            file_list.remove(thisfile)
+
+def prefilter(file_list, filters):
+    """Pre-filter the input exposure filenames
+    Possible filters to apply are:
+
+    'NOGOODPIXELS': Filter out datasets that have DQ flags that exclude all spectrum pixels from coaddition
+    
+    'ZERO_EXP_TIME': Filter out datasets that have EXPTIME = 0.0
+    
+    'PLANNEDVSACTUAL': Filter out datasets where the actual exposure time is less than a certain
+                       fraction of planned exposure time
+
+    """
+    if 'NOGOODPIXELS' in filters:
+        for fitsfile in file_list:
+            temp_segmentlist = HASP_SegmentList(None, None)
+            temp_segmentlist.import_data([fitsfile])
+
+def write_stats(results, outfile):
+    npts = len(results[0])
+    with open('stats.txt', 'at') as f:
+        for i in range(npts):
+            outstring = f'{outfile}, {results[0][i]}, {results[1][i]}, {results[2][i]}, {results[3][i]}, '
+            outstring = outstring + f'{results[4][i]}, {results[5][i]}, {results[6][i]}\n'
+            f.write(outstring)
+        f.close()
 
 
 def create_output_file_name(prod, producttype, version=VERSION, level=3):
@@ -641,9 +785,12 @@ def call_main():
     parser.add_argument("-c", "--clobber", default=False,
                         action="store_true",
                         help="If True, overwrite existing products")
+    parser.add_argument("-t", "--threshold",
+                        default=-50, type=float,
+                        help="Threshold for flux filtering")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.version, args.clobber)
+    main(args.indir, args.outdir, args.version, args.clobber, args.threshold)
 
 
 if __name__ == '__main__':
