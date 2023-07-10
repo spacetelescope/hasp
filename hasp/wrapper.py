@@ -855,6 +855,7 @@ def create_output_file_name(prod, producttype, version=VERSION, level=3):
     version = version.lower()
     propid = str(prod.propid)
     ipppss = prod.rootname[:6]
+    ippp = prod.rootname[:4]
     detector = prod.detector.lower()
 
     # Target names can't have a period in them or it breaks MAST
@@ -878,7 +879,7 @@ def create_output_file_name(prod, producttype, version=VERSION, level=3):
     if producttype == 'visit':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
     elif producttype == 'proposal':
-        name = f"hst_{propid}_{instrument}_{target}_{grating}_{suffix}.fits"
+        name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
     return name
 
 def rename_target(target_name):
