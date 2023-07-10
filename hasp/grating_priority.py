@@ -29,6 +29,9 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
     if ngratings == 1:
         print("No need to make abutted product as only 1 grating")
         return None
+    if ngratings == 0:
+        print('No valid input grating products')
+        return None
     print("Making a product from these gratings")
     for grating in used_gratings_list:
         actual_minwave = productdict[grating['name']].first_good_wavelength
