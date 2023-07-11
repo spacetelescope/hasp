@@ -22,6 +22,9 @@ STIS_NON_CCD_DETECTORS = ['FUV-MAMA', 'NUV-MAMA']
 
 INTERNAL_TARGETS = ['WAVE']
 
+PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
+              'POSTARG1', 'POSTARG2']
+
 '''
 This wrapper goes through each target folder in the ullyses data directory and find
 the data and which gratings are present. This info is then fed into coadd.py.
@@ -88,8 +91,8 @@ class HASP_SegmentList(SegmentList):
                     self.primary_headers.append(hdr0)
                     self.first_headers.append(hdr1)
                     sdqflags = hdr1['SDQFLAGS']
-                    if self.instrument == "STIS" and (sdqflags&16) == 16 and \
-                            hdr0['DETECTOR'] in STIS_NON_CCD_DETECTORS:
+                    # Remove 16 from SDQFLAGS for STIS data if it's present
+                    if self.instrument == "STIS" and (sdqflags&16) == 16:
                         sdqflags -= 16
                     exptime = hdr1['EXPTIME']
                     for rownum, row in enumerate(data):
@@ -356,6 +359,8 @@ class HASP_SegmentList(SegmentList):
             goodpixels = np.where((segment.data['dq'] & segment.sdqflags) == 0)
             if len(goodpixels[0]) == 0:
                 print('No good pixels for segment #{}'.format(nseg))
+                filename.append(segment.filename)
+                rownum.append(segment.rownum)
                 continue
             wavelength = segment.data['wavelength'][goodpixels]
             indices = self.wavelength_to_index(wavelength)
@@ -434,7 +439,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
     proposaldict = {}
     spec1d = glob.glob(os.path.join(indir, '*_x1d.fits')) + glob.glob(os.path.join(indir, '*_sx1.fits'))
     spec1d.sort()
-#    spec1d = prefilter(spec1d, filters=['NOGOODPIXELS', 'ZERO_EXP_TIME', 'PLANNEDVSACTUAL'])
+    spec1d = prefilter(spec1d, filters=PREFILTERS)
 #
 # Create the list of modes
     print('Creating list of unique modes from these files:')
@@ -507,6 +512,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
             productdict = {}
             level = 2
             uniqmodes = []
+            no_good_data = False
             for uniqmode in thisvisitandtargetspec:
                 instrument = uniqmode[0]
                 grating = uniqmode[1]
@@ -518,6 +524,10 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                 files_to_import = visitdict[uniqmode]
                 # Flux based filtering loop
                 while True:
+                    if len(files_to_import) == 0:
+                        print('No good files')
+                        no_good_data = True
+                        break
                     print('Importing files {}'.format(files_to_import))
                     # this instantiates the class
                     if instrument == 'COS':
@@ -540,7 +550,8 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         prod.coadd()
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
-                            continue
+                            no_good_data = True
+                            break
                         result = prod.calculate_statistics()
                         files_to_cull = analyse_result(result, threshold=threshold)
                         if files_to_cull == []:
@@ -553,6 +564,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         print(f'No valid data for grating {grating}')
                 # this writes the output file
                 # If making HLSPs for a DR, put them in the official folder
+                if no_good_data: break
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec = prod.get_coords()
                 target = prod.target.lower()
@@ -613,16 +625,24 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
             productdict = {}
             level = 2
             uniqmodes = []
+            no_good_data = False
             for uniqmode in thisproposalandtargetspec:
                 instrument = uniqmode[0]
                 grating = uniqmode[1]
                 detector = uniqmode[2]
                 setting = instrument + '/' + grating
+                print(f'Processing grating {setting}')
                 if (instrument, grating, detector) not in uniqmodes:
                     uniqmodes.append((instrument, grating, detector))
                 files_to_import = proposaldict[uniqmode]
+                if 'MOVINGTARGET' in PREFILTERS:
+                    files_to_import = check_for_moving_targets(files_to_import)
                 # Flux filtering loop
                 while True:
+                    if len(files_to_import) == 0:
+                        print('No suitable files for this product')
+                        no_good_data = True
+                        break
                     print('Importing files {}'.format(files_to_import))
                     # this instantiates the class
                     if instrument == 'COS':
@@ -646,7 +666,8 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         prod.coadd()
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
-                            continue
+                            no_good_data = True
+                            break
                         result = prod.calculate_statistics()
                         files_to_cull = analyse_result(result, threshold=threshold)
                         if files_to_cull == []:
@@ -655,9 +676,9 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                             cull_files(files_to_cull, files_to_import)
                     else:
                         print(f"No valid data for grating {grating}")
-
-                # this writes the output file
-                # If making HLSPs for a DR, put them in the official folder
+                    # this writes the output file
+                    # If making HLSPs for a DR, put them in the official folder
+                if no_good_data: break
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec = prod.get_coords()
                 target = prod.target.lower()
@@ -712,18 +733,110 @@ def prefilter(file_list, filters):
     """Pre-filter the input exposure filenames
     Possible filters to apply are:
 
-    'NOGOODPIXELS': Filter out datasets that have DQ flags that exclude all spectrum pixels from coaddition
+    'EXPFLAG': Filter out datasets that EXPFLAG keyword anything other than 'NORMAL'
     
-    'ZERO_EXP_TIME': Filter out datasets that have EXPTIME = 0.0
+    'ZEROEXPTIME': Filter out datasets that have EXPTIME = 0.0
     
     'PLANNEDVSACTUAL': Filter out datasets where the actual exposure time is less than a certain
                        fraction of planned exposure time
 
     """
-    if 'NOGOODPIXELS' in filters:
+    if 'EXPFLAG' in filters:
+        goodfiles = []
         for fitsfile in file_list:
-            temp_segmentlist = HASP_SegmentList(None, None)
-            temp_segmentlist.import_data([fitsfile])
+            try:
+                value = fits.getval(fitsfile, 'EXPFLAG', ext=1)
+            except KeyError:
+                value = 'Not found'
+            if value == 'NORMAL':
+                goodfiles.append(fitsfile)
+            else:
+                print(f'File {fitsfile} removed from products because EXPFLAG = {value}')
+        file_list = goodfiles
+
+    if 'ZEROEXPTIME' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                value = fits.getval(fitsfile, 'EXPTIME', ext=1)
+            except KeyError:
+                value = 'Not found'
+            if value > 0.0:
+                goodfiles.append(fitsfile)
+            else:
+                print(f'File {fitsfile} removed from products because EXPTIME = {value}')
+        file_list = goodfiles
+    
+    if 'PLANNEDVSACTUAL' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                actual = fits.getval(fitsfile, 'EXPTIME', ext=1)
+                planned = fits.getval(fitsfile, 'PLANTIME', ext=1)
+                if actual >= 0.8 * planned:
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because EXPTIME ({actual}) < 0.8*PLANTIME ({planned})')
+            except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'NOTFINELOCK' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                value = fits.getval(fitsfile, 'FGSLOCK', ext=1)
+                if value == 'FINE':
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because FGSLOCK = {value}')
+            except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'POSTARG1' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                value = fits.getval(fitsfile, 'POSTARG1')
+                if value == 0.0:
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because POSTARG1 = {value}')
+            except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'POSTARG2' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                value = fits.getval(fitsfile, 'POSTARG2')
+                if value == 0.0:
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because POSTARG2 = {value}')
+            except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    return goodfiles
+
+def check_for_moving_targets(files_to_import):
+    not_moving = []
+    for fitsfile in files_to_import:
+        f1 = fits.open(fitsfile)
+        prihdr = f1[0].header
+        mtflag = prihdr['MTFLAG']
+        if mtflag != 'T':
+            not_moving.append(fitsfile)
+        else:
+            targname = prihdr['TARGNAME']
+            print(f'File {fitsfile} removed from program products because {targname} is a moving target')
+    ngood = len(not_moving)
+    if ngood != 0 and ngood != len(files_to_import):
+        print('Some (but not all) files with this target name have MTFLAG="T"')
+    return not_moving
 
 def write_stats(results, outfile):
     npts = len(results[0])
@@ -742,6 +855,7 @@ def create_output_file_name(prod, producttype, version=VERSION, level=3):
     version = version.lower()
     propid = str(prod.propid)
     ipppss = prod.rootname[:6]
+    ippp = prod.rootname[:4]
     detector = prod.detector.lower()
 
     # Target names can't have a period in them or it breaks MAST
@@ -765,7 +879,7 @@ def create_output_file_name(prod, producttype, version=VERSION, level=3):
     if producttype == 'visit':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
     elif producttype == 'proposal':
-        name = f"hst_{propid}_{instrument}_{target}_{grating}_{suffix}.fits"
+        name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
     return name
 
 def rename_target(target_name):
