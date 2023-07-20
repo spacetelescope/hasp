@@ -18,16 +18,20 @@ from .grating_priority import create_level4_products
 
 CAL_VER = 0.1
 VERSION = 'dr1'
-STIS_NON_CCD_DETECTORS = ['FUV-MAMA', 'NUV-MAMA']
 
 INTERNAL_TARGETS = ['WAVE']
 
 PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
-              'POSTARG1', 'POSTARG2']
+              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE']
 
+BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
+                 
 '''
-This wrapper goes through each target folder in the ullyses data directory and find
-the data and which gratings are present. This info is then fed into coadd.py.
+This wrapper goes through each target folder in the selected directory ('indir') and 
+creates visit-level and program-level lists and dictionaries to collect all exposures
+with the same target and grating.  These are then coadded with flux-based filtering.
+Finally, the grating coadds are abutted using the grating priority table
+
 '''
 
 class HASP_SegmentList(SegmentList):
@@ -36,7 +40,9 @@ class HASP_SegmentList(SegmentList):
 
     """
 
-    bad_segments = {}
+    def __init__(self, grating, path='./'):
+        self.bad_echelle_orders = []
+        super().__init__(grating, path)
 
     def import_data(self, file_list):
         """This is used if the __init__ function is called with instrument
@@ -63,6 +69,8 @@ class HASP_SegmentList(SegmentList):
             if len(data) > 0:
                 self.instrument = prihdr['INSTRUME'].upper()
                 self.grating = prihdr['OPT_ELEM'].upper()
+                self.echelle = False
+                if self.grating.startswith('E'): self.echelle = True
                 self.propid = prihdr['PROPOSID']
                 self.datasets.append(datafile)
                 self.rootname = prihdr['ROOTNAME']
@@ -90,17 +98,22 @@ class HASP_SegmentList(SegmentList):
                 if len(data) > 0:
                     self.primary_headers.append(hdr0)
                     self.first_headers.append(hdr1)
+                    segment = hdr0['segment']
+                    cenwave = hdr0['cenwave']
+                    instrument = hdr0['INSTRUME']
+                    grating = hdr0['OPT_ELEM']
+                    setting = f'{instrument}/{grating}'
                     sdqflags = hdr1['SDQFLAGS']
                     # Remove 16 from SDQFLAGS for STIS data if it's present
                     if self.instrument == "STIS" and (sdqflags&16) == 16:
                         sdqflags -= 16
                     exptime = hdr1['EXPTIME']
                     for rownum, row in enumerate(data):
-                        cenwave = hdr0['cenwave']
-                        if cenwave in self.bad_segments.keys():
-                            if row['SEGMENT'] in self.bad_segments[cenwave]:
+                        # Filter out bad COS segments
+                        if setting in BAD_SEGMENTS.keys():
+                            if row['SEGMENT'] in BAD_SEGMENTS[setting]:
+                                print(f"Segment {row['SEGMENT']} removed from product for setting {setting}")
                                 continue
-
                         segment = Segment()
                         segment.data = row
                         segment.sdqflags = sdqflags
@@ -816,6 +829,34 @@ def prefilter(file_list, filters):
                     goodfiles.append(fitsfile)
                 else:
                     print(f'File {fitsfile} removed from products because POSTARG2 = {value}')
+            except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'DITHERPERPENDICULARTOSLIT' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                pattern1 = fits.getval(fitsfile, 'PATTERN1')
+                if pattern1 == 'STIS-PERP-TO-SLIT':
+                    p1_frame = fits.getval(fitsfile, 'P1_FRAME')
+                    if p1_frame != 'POS-TARG':
+                        goodfiles.append(fitsfile)
+                    else:
+                        print(f'File {fitsfile} removed from products because PATTERN1 = STIS-PERP-TO-SLIT and P1_FRAME = POS-TARG')
+            except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'MOSAICPURPOSE' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            try:
+                value = fits.getval(fitsfile, 'P1_PURPS')
+                if value != 'MOSAIC':
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because P1_PURPS = MOSAIC')
             except KeyError:
                 goodfiles.append(fitsfile)
         file_list = goodfiles
