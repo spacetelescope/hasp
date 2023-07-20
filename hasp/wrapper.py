@@ -27,8 +27,11 @@ PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTF
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
                  
 '''
-This wrapper goes through each target folder in the ullyses data directory and find
-the data and which gratings are present. This info is then fed into coadd.py.
+This wrapper goes through each target folder in the selected directory ('indir') and 
+creates visit-level and program-level lists and dictionaries to collect all exposures
+with the same target and grating.  These are then coadded with flux-based filtering.
+Finally, the grating coadds are abutted using the grating priority table
+
 '''
 
 class HASP_SegmentList(SegmentList):
