@@ -98,7 +98,6 @@ class HASP_SegmentList(SegmentList):
                 if len(data) > 0:
                     self.primary_headers.append(hdr0)
                     self.first_headers.append(hdr1)
-                    segment = hdr0['segment']
                     cenwave = hdr0['cenwave']
                     instrument = hdr0['INSTRUME']
                     grating = hdr0['OPT_ELEM']
@@ -844,6 +843,8 @@ def prefilter(file_list, filters):
                         goodfiles.append(fitsfile)
                     else:
                         print(f'File {fitsfile} removed from products because PATTERN1 = STIS-PERP-TO-SLIT and P1_FRAME = POS-TARG')
+                else:
+                    goodfiles.append(fitsfile)
             except KeyError:
                 goodfiles.append(fitsfile)
         file_list = goodfiles
