@@ -22,7 +22,7 @@ VERSION = 'dr1'
 INTERNAL_TARGETS = ['WAVE']
 
 PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
-              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE']
+              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM']
 
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
                  
@@ -167,6 +167,7 @@ class HASP_SegmentList(SegmentList):
             first = 0
             last = nelements
         rpt = str(nelements)
+        nchars = str(nelements * 20)
 
         # Table with co-added spectrum
         cw = fits.Column(name='WAVELENGTH', format=rpt+'E', unit="Angstrom")
@@ -174,6 +175,7 @@ class HASP_SegmentList(SegmentList):
         ce = fits.Column(name='ERROR', format=rpt+'E', unit="erg /s /cm**2 /Angstrom")
         cs = fits.Column(name='SNR', format=rpt+'E')
         ct = fits.Column(name='EFF_EXPTIME', format=rpt+'E', unit="s")
+#        cset = fits.Column(name='SETTING', format=nchars+'A', dim=(nelements, 20))
         cd = fits.ColDefs([cw, cf, ce, cs, ct])
         table1 = fits.BinTableHDU.from_columns(cd, nrows=1, header=hdr1)
 
@@ -183,6 +185,7 @@ class HASP_SegmentList(SegmentList):
         table1.data['ERROR'] = self.output_errors[first:last].copy()
         table1.data['SNR'] = self.signal_to_noise[first:last].copy()
         table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
+#        table1.data['SETTING'] = self.setting[first:last].copy()
         # HLSP primary header
         hdr0 = fits.Header()
         hdr0['EXTEND'] = ('T', 'FITS file may contain extensions')
@@ -560,6 +563,8 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
                         prod.coadd()
+                        setting_array = np.repeat(np.array(setting.ljust(20), dtype='str'), prod.nelements)
+                        prod.setting = setting_array
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
                             no_good_data = True
@@ -676,6 +681,8 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
                         prod.coadd()
+                        setting_array = np.repeat(np.array(setting.ljust(20), dtype='str'), prod.nelements)
+                        prod.setting = setting_array
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
                             no_good_data = True
@@ -860,6 +867,16 @@ def prefilter(file_list, filters):
                     print(f'File {fitsfile} removed from products because P1_PURPS = MOSAIC')
             except KeyError:
                 goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'PRISM' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            value = fits.getval(fitsfile, 'OPT_ELEM')
+            if 'PRISM' not in value:
+                goodfiles.append(fitsfile)
+            else:
+                print(f'File {fitsfile} removed from products because OPT_ELEM = {value}')
         file_list = goodfiles
 
     return goodfiles

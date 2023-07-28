@@ -108,12 +108,16 @@ def hp2(number, largest_power):
 
 def abut(product_short, product_long, transition_wavelength):
     """Abut the spectra in 2 products.  Assumes the first argument is the shorter
-    wavelength.  If either product is None, just return the product that isn't None.
+    wavelength.
     """
     if product_short is not None and product_long is not None:
         if transition_wavelength == "bad":
             return None
-        output_grating = product_short.grating + '-' + product_long.grating
+        # Make sure the grating doesn't appear more than once in the filename
+        if product_long.grating not in product_short.grating:
+            output_grating = product_short.grating + '-' + product_long.grating
+        else:
+            output_grating = product_short.grating
         product_abutted = product_short.__class__('', output_grating)
         goodshort = np.where(product_short.output_exptime > 0.)
         goodlong = np.where(product_long.output_exptime > 0.)
@@ -142,6 +146,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.output_errors = np.zeros(nout)
         product_abutted.signal_to_noise = np.zeros(nout)
         product_abutted.output_exptime = np.zeros(nout)
+        product_abutted.setting = np.repeat(np.array(20*' ',dtype='str'), nout)
         product_abutted.output_wavelength[:transition_index_short] = product_short.output_wavelength[:transition_index_short]
         product_abutted.output_wavelength[transition_index_short:] = product_long.output_wavelength[transition_index_long:]
         product_abutted.output_flux[:transition_index_short] = product_short.output_flux[:transition_index_short]
@@ -152,6 +157,8 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.signal_to_noise[transition_index_short:] = product_long.signal_to_noise[transition_index_long:]
         product_abutted.output_exptime[:transition_index_short] = product_short.output_exptime[:transition_index_short]
         product_abutted.output_exptime[transition_index_short:] = product_long.output_exptime[transition_index_long:]
+        product_abutted.setting[:transition_index_short] = product_short.setting[:transition_index_short]
+        product_abutted.setting[transition_index_short:] = product_long.setting[transition_index_long:]
         product_abutted.primary_headers = product_short.primary_headers + product_long.primary_headers
         product_abutted.first_headers = product_short.first_headers + product_long.first_headers
         product_abutted.grating = output_grating
@@ -181,6 +188,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
     elif product_short is not None:
+        # This will be the case for the last grating
         output_grating = product_short.grating
         product_abutted = product_short.__class__('', output_grating)
         short_indices = np.where(product_short.output_wavelength < transition_wavelength)
@@ -192,11 +200,13 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.output_errors = np.zeros(nout)
         product_abutted.signal_to_noise = np.zeros(nout)
         product_abutted.output_exptime = np.zeros(nout)
+        product_abutted.setting = np.zeros(nout)
         product_abutted.output_wavelength = product_short.output_wavelength[:transition_index_short]
         product_abutted.output_flux = product_short.output_flux[:transition_index_short]
         product_abutted.output_errors = np.abs(product_short.output_errors[:transition_index_short])
         product_abutted.signal_to_noise = product_short.signal_to_noise[:transition_index_short]
         product_abutted.output_exptime = product_short.output_exptime[:transition_index_short]
+        product_abutted.setting = product_short.setting[:transition_index_short]
         product_abutted.primary_headers = product_short.primary_headers
         product_abutted.first_headers = product_short.first_headers
         product_abutted.grating = product_short.grating
@@ -207,6 +217,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
     elif product_long is not None:
+        # This is the case for the first grating
         output_grating = product_long.grating
         product_abutted = product_long.__class__('', output_grating)
         long_indices = np.where(product_long.output_wavelength > transition_wavelength)
@@ -218,11 +229,13 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.output_errors = np.zeros(nout)
         product_abutted.signal_to_noise = np.zeros(nout)
         product_abutted.output_exptime = np.zeros(nout)
+        product_abutted.settimg = np.zeros(nout)
         product_abutted.output_wavelength = product_long.output_wavelength[transition_index_long:]
         product_abutted.output_flux = product_long.output_flux[transition_index_long:]
         product_abutted.output_errors = np.abs(product_long.output_errors[transition_index_long:])
         product_abutted.signal_to_noise = product_long.signal_to_noise[transition_index_long:]
         product_abutted.output_exptime = product_long.output_exptime[transition_index_long:]
+        product_abutted.setting = product_long.setting[transition_index_long:]
         product_abutted.primary_headers = product_long.primary_headers
         product_abutted.first_headers = product_long.first_headers
         product_abutted.grating = product_long.grating
