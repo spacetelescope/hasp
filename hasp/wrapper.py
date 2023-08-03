@@ -22,10 +22,11 @@ VERSION = 'dr1'
 INTERNAL_TARGETS = ['WAVE']
 
 PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
-              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM']
+              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM',
+              'COSBOA']
 
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
-                 
+
 '''
 This wrapper goes through each target folder in the selected directory ('indir') and 
 creates visit-level and program-level lists and dictionaries to collect all exposures
@@ -354,6 +355,7 @@ class HASP_SegmentList(SegmentList):
         contribute to the coadded product
         
         """
+        self.maxsn = 20.0
         statistics = []
         nsegments = len(self.members)
         if nsegments == 1:
@@ -387,8 +389,9 @@ class HASP_SegmentList(SegmentList):
             ndeviations[nseg] = 0
             for i in range(npts):
                 if error[i] != 0.0 and segment.exptime != self.output_exptime[indices[i]]:
+                    min_error = flux[i] / self.maxsn
                     deviation[i] = (flux[i] - self.output_flux[indices[i]])
-                    deviation[i] = deviation[i] / error[i]
+                    deviation[i] = deviation[i] / max(error[i], min_error)
                     ndeviations[nseg] = ndeviations[nseg] + 1
                     deviation_squared[i] = deviation[i] * deviation[i]
             nonzero_deviations = np.where(deviation != 0.0)
@@ -834,7 +837,12 @@ def prefilter(file_list, filters):
                 if value == 0.0:
                     goodfiles.append(fitsfile)
                 else:
-                    print(f'File {fitsfile} removed from products because POSTARG2 = {value}')
+                    if fits.getval(fitsfile, 'INSTRUME') == 'STIS':
+                        purpose = fits.getval(fitsfile, 'P1_PURPS')
+                        if purpose == 'DITHER':
+                            goodfiles.append(fitsfile)
+                            continue
+                    print(f'File {fitsfile} removed from products because POSTARG2 = {value} and P1_PURPS != DITHER')
             except KeyError:
                 goodfiles.append(fitsfile)
         file_list = goodfiles
@@ -877,6 +885,18 @@ def prefilter(file_list, filters):
                 goodfiles.append(fitsfile)
             else:
                 print(f'File {fitsfile} removed from products because OPT_ELEM = {value}')
+        file_list = goodfiles
+
+    if 'COSBOA' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            instrument = fits.getval(fitsfile, 'INSTRUME')
+            if instrument == 'COS':
+                aperture = fits.getval(fitsfile, 'APERTURE')
+                if aperture != 'BOA':
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because COS APERTURE = BOA')
         file_list = goodfiles
 
     return goodfiles
