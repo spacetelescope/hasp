@@ -965,7 +965,7 @@ def create_output_file_name(prod, producttype, version=VERSION, level=3):
     return name
 
 def rename_target(target_name):
-    new_target_name = target_name.replace('.', '_')
+    new_target_name = target_name.replace('.', '-')
     return new_target_name
 
 def call_main():
