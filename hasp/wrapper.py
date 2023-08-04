@@ -22,10 +22,11 @@ VERSION = 'dr1'
 INTERNAL_TARGETS = ['WAVE']
 
 PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
-              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE']
+              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM',
+              'COSBOA']
 
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
-                 
+
 '''
 This wrapper goes through each target folder in the selected directory ('indir') and 
 creates visit-level and program-level lists and dictionaries to collect all exposures
@@ -167,6 +168,7 @@ class HASP_SegmentList(SegmentList):
             first = 0
             last = nelements
         rpt = str(nelements)
+        nchars = str(nelements * 20)
 
         # Table with co-added spectrum
         cw = fits.Column(name='WAVELENGTH', format=rpt+'E', unit="Angstrom")
@@ -174,6 +176,7 @@ class HASP_SegmentList(SegmentList):
         ce = fits.Column(name='ERROR', format=rpt+'E', unit="erg /s /cm**2 /Angstrom")
         cs = fits.Column(name='SNR', format=rpt+'E')
         ct = fits.Column(name='EFF_EXPTIME', format=rpt+'E', unit="s")
+#        cset = fits.Column(name='SETTING', format=nchars+'A', dim=(nelements, 20))
         cd = fits.ColDefs([cw, cf, ce, cs, ct])
         table1 = fits.BinTableHDU.from_columns(cd, nrows=1, header=hdr1)
 
@@ -183,6 +186,7 @@ class HASP_SegmentList(SegmentList):
         table1.data['ERROR'] = self.output_errors[first:last].copy()
         table1.data['SNR'] = self.signal_to_noise[first:last].copy()
         table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
+#        table1.data['SETTING'] = self.setting[first:last].copy()
         # HLSP primary header
         hdr0 = fits.Header()
         hdr0['EXTEND'] = ('T', 'FITS file may contain extensions')
@@ -351,6 +355,7 @@ class HASP_SegmentList(SegmentList):
         contribute to the coadded product
         
         """
+        print(f'Using a maximum SNR of {self.snrmax} in flux-based filtering')
         statistics = []
         nsegments = len(self.members)
         if nsegments == 1:
@@ -384,8 +389,9 @@ class HASP_SegmentList(SegmentList):
             ndeviations[nseg] = 0
             for i in range(npts):
                 if error[i] != 0.0 and segment.exptime != self.output_exptime[indices[i]]:
+                    min_error = flux[i] / self.snrmax
                     deviation[i] = (flux[i] - self.output_flux[indices[i]])
-                    deviation[i] = deviation[i] / error[i]
+                    deviation[i] = deviation[i] / max(error[i], min_error)
                     ndeviations[nseg] = ndeviations[nseg] + 1
                     deviation_squared[i] = deviation[i] * deviation[i]
             nonzero_deviations = np.where(deviation != 0.0)
@@ -427,7 +433,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
+def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20):
     outdir_inplace = False
     if outdir is None:
         HLSP_DIR = os.getenv('HLSP_DIR')
@@ -556,10 +562,13 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
+                    prod.snrmax = snrmax
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
                         prod.coadd()
+                        setting_array = np.repeat(np.array(setting.ljust(20), dtype='str'), prod.nelements)
+                        prod.setting = setting_array
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
                             no_good_data = True
@@ -671,11 +680,13 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
-
+                    prod.snrmax = snrmax
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
                         prod.coadd()
+                        setting_array = np.repeat(np.array(setting.ljust(20), dtype='str'), prod.nelements)
+                        prod.setting = setting_array
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
                             no_good_data = True
@@ -827,7 +838,12 @@ def prefilter(file_list, filters):
                 if value == 0.0:
                     goodfiles.append(fitsfile)
                 else:
-                    print(f'File {fitsfile} removed from products because POSTARG2 = {value}')
+                    if fits.getval(fitsfile, 'INSTRUME') == 'STIS':
+                        purpose = fits.getval(fitsfile, 'P1_PURPS')
+                        if purpose == 'DITHER':
+                            goodfiles.append(fitsfile)
+                        else:
+                            print(f'File {fitsfile} removed from products because POSTARG2 = {value} and P1_PURPS != DITHER')
             except KeyError:
                 goodfiles.append(fitsfile)
         file_list = goodfiles
@@ -859,6 +875,30 @@ def prefilter(file_list, filters):
                 else:
                     print(f'File {fitsfile} removed from products because P1_PURPS = MOSAIC')
             except KeyError:
+                goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'PRISM' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            value = fits.getval(fitsfile, 'OPT_ELEM')
+            if 'PRISM' not in value:
+                goodfiles.append(fitsfile)
+            else:
+                print(f'File {fitsfile} removed from products because OPT_ELEM = {value}')
+        file_list = goodfiles
+
+    if 'COSBOA' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            instrument = fits.getval(fitsfile, 'INSTRUME')
+            if instrument == 'COS':
+                aperture = fits.getval(fitsfile, 'APERTURE')
+                if aperture != 'BOA':
+                    goodfiles.append(fitsfile)
+                else:
+                    print(f'File {fitsfile} removed from products because COS APERTURE = BOA')
+            else:
                 goodfiles.append(fitsfile)
         file_list = goodfiles
 
@@ -943,10 +983,13 @@ def call_main():
                         help="If True, overwrite existing products")
     parser.add_argument("-t", "--threshold",
                         default=-50, type=float,
-                        help="Threshold for flux filtering")
+                        help="Threshold for flux-based filtering")
+    parser.add_argument("-s", "--snrmax",
+                        default=20.0, type=float,
+                        help="Maximum SNR per pixel for flux-based filtering")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.version, args.clobber, args.threshold)
+    main(args.indir, args.outdir, args.version, args.clobber, args.threshold, args.snrmax)
 
 
 if __name__ == '__main__':
