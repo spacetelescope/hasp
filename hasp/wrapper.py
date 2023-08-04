@@ -355,7 +355,7 @@ class HASP_SegmentList(SegmentList):
         contribute to the coadded product
         
         """
-        self.maxsn = 20.0
+        print(f'Using a maximum SNR of {self.snrmax} in flux-based filtering')
         statistics = []
         nsegments = len(self.members)
         if nsegments == 1:
@@ -389,7 +389,7 @@ class HASP_SegmentList(SegmentList):
             ndeviations[nseg] = 0
             for i in range(npts):
                 if error[i] != 0.0 and segment.exptime != self.output_exptime[indices[i]]:
-                    min_error = flux[i] / self.maxsn
+                    min_error = flux[i] / self.snrmax
                     deviation[i] = (flux[i] - self.output_flux[indices[i]])
                     deviation[i] = deviation[i] / max(error[i], min_error)
                     ndeviations[nseg] = ndeviations[nseg] + 1
@@ -433,7 +433,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
+def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20):
     outdir_inplace = False
     if outdir is None:
         HLSP_DIR = os.getenv('HLSP_DIR')
@@ -562,6 +562,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
+                    prod.snrmax = snrmax
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
@@ -679,7 +680,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50):
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
-
+                    prod.snrmax = snrmax
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
@@ -841,8 +842,8 @@ def prefilter(file_list, filters):
                         purpose = fits.getval(fitsfile, 'P1_PURPS')
                         if purpose == 'DITHER':
                             goodfiles.append(fitsfile)
-                            continue
-                    print(f'File {fitsfile} removed from products because POSTARG2 = {value} and P1_PURPS != DITHER')
+                        else:
+                            print(f'File {fitsfile} removed from products because POSTARG2 = {value} and P1_PURPS != DITHER')
             except KeyError:
                 goodfiles.append(fitsfile)
         file_list = goodfiles
@@ -897,6 +898,8 @@ def prefilter(file_list, filters):
                     goodfiles.append(fitsfile)
                 else:
                     print(f'File {fitsfile} removed from products because COS APERTURE = BOA')
+            else:
+                goodfiles.append(fitsfile)
         file_list = goodfiles
 
     return goodfiles
@@ -980,10 +983,13 @@ def call_main():
                         help="If True, overwrite existing products")
     parser.add_argument("-t", "--threshold",
                         default=-50, type=float,
-                        help="Threshold for flux filtering")
+                        help="Threshold for flux-based filtering")
+    parser.add_argument("-s", "--snrmax",
+                        default=20.0, type=float,
+                        help="Maximum SNR per pixel for flux-based filtering")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.version, args.clobber, args.threshold)
+    main(args.indir, args.outdir, args.version, args.clobber, args.threshold, args.snrmax)
 
 
 if __name__ == '__main__':
