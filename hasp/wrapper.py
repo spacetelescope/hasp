@@ -563,6 +563,10 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
                     prod.snrmax = snrmax
+                    prod.gratinglist = [grating]
+                    prod.disambiguated_grating = grating.lower()
+                    if grating in ['G230L', 'G140L']:
+                        prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
@@ -681,6 +685,10 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
                     prod.snrmax = snrmax
+                    prod.gratinglist = [grating]
+                    prod.disambiguated_grating = grating.lower()
+                    if grating in ['G230L', 'G140L']:
+                        prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
@@ -932,7 +940,7 @@ def write_stats(results, outfile):
 
 def create_output_file_name(prod, producttype, version=VERSION, level=3):
     instrument = prod.instrument.lower()   # will be either cos or stis. If abutted can be cos-stis
-    grating = prod.grating.lower()
+    grating = prod.disambiguated_grating.lower()
     target = prod.target.lower()
     version = version.lower()
     propid = str(prod.propid)
