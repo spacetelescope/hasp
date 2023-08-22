@@ -1,8 +1,8 @@
 import numpy as np
 
 GRATING_PRIORITIES = {'STIS/E140M': {'minwave': 1144, 'maxwave': 1710, 'priority': 1},
-                      'COS/G130M': {'minwave': 900, 'maxwave': 1450, 'priority': 2},
-                      'COS/G160M': {'minwave': 1360, 'maxwave': 1775, 'priority': 3},
+                      'COS/G130M': {'minwave': 900, 'maxwave': 1470, 'priority': 2},
+                      'COS/G160M': {'minwave': 1342, 'maxwave': 1800, 'priority': 3},
                       'STIS/E140H': {'minwave': 1139, 'maxwave': 1700, 'priority': 4},
                       'STIS/G140M': {'minwave': 1140, 'maxwave': 1740, 'priority': 5},
                       'STIS/E230M': {'minwave': 1605, 'maxwave': 3110, 'priority': 6},
