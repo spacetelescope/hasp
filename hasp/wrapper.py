@@ -214,6 +214,8 @@ class HASP_SegmentList(SegmentList):
         hdr0['TARG_RA'] =  (self.targ_ra,  '[deg] Target right ascension')
         hdr0['TARG_DEC'] =  (self.targ_dec,  '[deg] Target declination')
         hdr0['PROPOSID'] = (self.combine_keys("proposid", "multi"), 'Program identifier')
+        hdr0['MTFLAG'] = (self.combine_keys("mtflag", "multi"), 'Moving Target Flag')
+        hdr0['EXTENDED'] = (self.combine_keys("extended", "max"), 'Is target extended?')
         hdr0.add_blank(after='TARG_DEC')
         hdr0.add_blank('           / PROVENANCE INFORMATION', before='PROPOSID')
         hdr0['CAL_VER'] = (f'HSLA Cal {CAL_VER}', 'HLSP processing software version')
@@ -302,7 +304,9 @@ class HASP_SegmentList(SegmentList):
                          "maxwave": ("maxwave", 0),
                          "filename": ("filename", 0),
                          "specres": ("specres", 0),
-                         "cal_ver": ("cal_ver", 0)},
+                         "cal_ver": ("cal_ver", 0),
+                         "mtflag": ("mtflag", 0),
+                         "extended": ("extended", 0)},
                 "FUSE": {"expstart": ("obsstart", 0),
                          "expend": ("obsend", 0),
                          "exptime": ("obstime", 0),
@@ -327,9 +331,15 @@ class HASP_SegmentList(SegmentList):
             actual_key = keymap[tel][key][0]
             hdrno = keymap[tel][key][1]
             if hdrno == 0:
-                val = self.primary_headers[i][actual_key]
+                try:
+                    val = self.primary_headers[i][actual_key]
+                except KeyError:
+                    val = '?'
             else:
-                val = self.first_headers[i][actual_key]
+                try:
+                    val = self.first_headers[i][actual_key]
+                except KeyError:
+                    val = '?'
             vals.append(val)
 
         # Allowable methods are min, max, average, sum, multi, arr
@@ -433,7 +443,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20):
+def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False):
     outdir_inplace = False
     if outdir is None:
         HLSP_DIR = os.getenv('HLSP_DIR')
@@ -457,7 +467,11 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
     proposaldict = {}
     spec1d = glob.glob(os.path.join(indir, '*_x1d.fits')) + glob.glob(os.path.join(indir, '*_sx1.fits'))
     spec1d.sort()
-    spec1d = prefilter(spec1d, filters=PREFILTERS)
+    if no_keyword_filtering:
+        keyword_filters = ['PRISM']
+    else:
+        keyword_filters = PREFILTERS
+    spec1d = prefilter(spec1d, filters=keyword_filters)
 #
 # Create the list of modes
     print('Creating list of unique modes from these files:')
@@ -563,6 +577,10 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
                     prod.snrmax = snrmax
+                    prod.gratinglist = [grating]
+                    prod.disambiguated_grating = grating.lower()
+                    if grating in ['G230L', 'G140L']:
+                        prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
@@ -681,6 +699,10 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                     prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec = prod.get_coords()
                     prod.snrmax = snrmax
+                    prod.gratinglist = [grating]
+                    prod.disambiguated_grating = grating.lower()
+                    if grating in ['G230L', 'G140L']:
+                        prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
                     # these two calls perform the main functions
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
@@ -764,6 +786,7 @@ def prefilter(file_list, filters):
                        fraction of planned exposure time
 
     """
+
     if 'EXPFLAG' in filters:
         goodfiles = []
         for fitsfile in file_list:
@@ -932,7 +955,7 @@ def write_stats(results, outfile):
 
 def create_output_file_name(prod, producttype, version=VERSION, level=3):
     instrument = prod.instrument.lower()   # will be either cos or stis. If abutted can be cos-stis
-    grating = prod.grating.lower()
+    grating = prod.disambiguated_grating.lower()
     target = prod.target.lower()
     version = version.lower()
     propid = str(prod.propid)
@@ -987,9 +1010,12 @@ def call_main():
     parser.add_argument("-s", "--snrmax",
                         default=20.0, type=float,
                         help="Maximum SNR per pixel for flux-based filtering")
+    parser.add_argument("-k", "--no_keyword_filtering", default=False,
+                        action="store_true",
+                        help="Disable keyword based filtering (except for STIS PRISM data, which is always filtered)")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.version, args.clobber, args.threshold, args.snrmax)
+    main(args.indir, args.outdir, args.version, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering)
 
 
 if __name__ == '__main__':

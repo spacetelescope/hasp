@@ -1,8 +1,8 @@
 import numpy as np
 
 GRATING_PRIORITIES = {'STIS/E140M': {'minwave': 1144, 'maxwave': 1710, 'priority': 1},
-                      'COS/G130M': {'minwave': 900, 'maxwave': 1450, 'priority': 2},
-                      'COS/G160M': {'minwave': 1360, 'maxwave': 1775, 'priority': 3},
+                      'COS/G130M': {'minwave': 900, 'maxwave': 1470, 'priority': 2},
+                      'COS/G160M': {'minwave': 1342, 'maxwave': 1800, 'priority': 3},
                       'STIS/E140H': {'minwave': 1139, 'maxwave': 1700, 'priority': 4},
                       'STIS/G140M': {'minwave': 1140, 'maxwave': 1740, 'priority': 5},
                       'STIS/E230M': {'minwave': 1605, 'maxwave': 3110, 'priority': 6},
@@ -114,8 +114,9 @@ def abut(product_short, product_long, transition_wavelength):
         if transition_wavelength == "bad":
             return None
         # Make sure the grating doesn't appear more than once in the filename
-        if product_long.grating not in product_short.grating:
-            output_grating = product_short.grating + '-' + product_long.grating
+        if product_long.grating not in product_short.gratinglist:
+            product_short.gratinglist.append(product_long.grating)
+            output_grating = product_short.grating + '-' + product_long.disambiguated_grating
         else:
             output_grating = product_short.grating
         product_abutted = product_short.__class__('', output_grating)
@@ -162,6 +163,8 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.primary_headers = product_short.primary_headers + product_long.primary_headers
         product_abutted.first_headers = product_short.first_headers + product_long.first_headers
         product_abutted.grating = output_grating
+        product_abutted.disambiguated_grating = output_grating
+        product_abutted.gratinglist = product_short.gratinglist
         product_short.target = product_short.get_targname()
         product_long.target = product_long.get_targname()
         if product_short.instrument in product_long.instrument:
@@ -210,6 +213,8 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.primary_headers = product_short.primary_headers
         product_abutted.first_headers = product_short.first_headers
         product_abutted.grating = product_short.grating
+        product_abutted.disambiguated_grating = product_short.disambiguated_grating
+        product_abutted.gratinglist = product_short.gratinglist
         product_abutted.instrument = product_short.instrument
         product_abutted.target = product_short.target
         target_matched = True
@@ -218,7 +223,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.rootname = product_short.rootname
     elif product_long is not None:
         # This is the case for the first grating
-        output_grating = product_long.grating
+        output_grating = product_long.disambiguated_grating
         product_abutted = product_long.__class__('', output_grating)
         long_indices = np.where(product_long.output_wavelength > transition_wavelength)
         transition_index_long = long_indices[0][0]
@@ -238,7 +243,9 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.setting = product_long.setting[transition_index_long:]
         product_abutted.primary_headers = product_long.primary_headers
         product_abutted.first_headers = product_long.first_headers
-        product_abutted.grating = product_long.grating
+        product_abutted.grating = product_long.disambiguated_grating
+        product_abutted.disambiguated_grating = product_long.disambiguated_grating
+        product_abutted.gratinglist = product_long.gratinglist
         product_long.target = product_long.get_targname()
         product_abutted.instrument = product_long.instrument
         product_abutted.target = product_long.target
