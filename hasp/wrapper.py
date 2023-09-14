@@ -61,11 +61,18 @@ class HASP_SegmentList(SegmentList):
             print('Processing file {}'.format(datafile))
             with fits.open(datafile) as f1:
                 prihdr = f1[0].header
-                hdr1 = f1[1].header
-                data = f1[1].data
-                alldata.append(data)
-                allhdr0.append(prihdr)
-                allhdr1.append(hdr1)
+                for extension in f1[1:]:
+                    if extension.header['EXTNAME'] == 'SCI':
+                        hdr1 = extension.header
+                        data = extension.data
+                        alldata.append(data)
+                        allhdr0.append(prihdr)
+                        allhdr1.append(hdr1)
+                        self.datasets.append(datafile)
+                        extver = extension.header['extver']
+                        if extver> 1:
+                            expname = extension.header['EXPNAME']
+                            print(f'Extension {extver} with expname {expname} included for file {datafile}')
 
             if len(data) > 0:
                 self.instrument = prihdr['INSTRUME'].upper()
@@ -73,7 +80,6 @@ class HASP_SegmentList(SegmentList):
                 self.echelle = False
                 if self.grating.startswith('E'): self.echelle = True
                 self.propid = prihdr['PROPOSID']
-                self.datasets.append(datafile)
                 self.rootname = prihdr['ROOTNAME']
                 self.detector = prihdr['DETECTOR']
                 target = prihdr['TARGNAME'].strip()
