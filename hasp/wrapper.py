@@ -2,7 +2,6 @@ from collections import defaultdict
 import argparse
 import os
 import glob
-import re
 import datetime
 from datetime import datetime as dt
 import numpy as np
@@ -11,13 +10,12 @@ import astropy
 from astropy.io import fits
 from astropy.time import Time
 
-from ullyses.coadd import COSSegmentList, STISSegmentList, FUSESegmentList, CCDSegmentList
+from ullyses.coadd import COSSegmentList, STISSegmentList, CCDSegmentList
 from ullyses.coadd import SegmentList, Segment
 
 from .grating_priority import create_level4_products
 
 CAL_VER = 0.1
-VERSION = 'dr1'
 
 INTERNAL_TARGETS = ['WAVE']
 
@@ -28,12 +26,13 @@ PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTF
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
 
 '''
-This wrapper goes through each target folder in the selected directory ('indir') and 
+This wrapper goes through each file in the selected directory ('indir') and
 creates visit-level and program-level lists and dictionaries to collect all exposures
 with the same target and grating.  These are then coadded with flux-based filtering.
 Finally, the grating coadds are abutted using the grating priority table
 
 '''
+
 
 class HASP_SegmentList(SegmentList):
     """This class is a mixin to add the project-specific write function and functions
@@ -50,13 +49,32 @@ class HASP_SegmentList(SegmentList):
         and grating set to None.  This separates the selection of which files
         to work on from the constructor
 
+        Parameters
+        ----------
+
+        file_list : list of strings
+            List of files from which to make a product
+
+        Returns
+        -------
+
+        None
+
+        Side Effects
+        ------------
+
+        Populates many attributes of the calling object
+
         """
 
         alldata = []
         allhdr0 = []
         allhdr1 = []
         self.datasets = []
-
+        self.num_exp = 0
+        self.gratinglist = []
+        self.instrumentlist = []
+        self.aperturelist = []
         for datafile in file_list:
             print('Processing file {}'.format(datafile))
             with fits.open(datafile) as f1:
@@ -69,8 +87,9 @@ class HASP_SegmentList(SegmentList):
                         allhdr0.append(prihdr)
                         allhdr1.append(hdr1)
                         self.datasets.append(datafile)
+                        self.num_exp += 1
                         extver = extension.header['extver']
-                        if extver> 1:
+                        if extver > 1:
                             expname = extension.header['EXPNAME']
                             print(f'Extension {extver} with expname {expname} included for file {datafile}')
 
@@ -78,17 +97,31 @@ class HASP_SegmentList(SegmentList):
                 self.instrument = prihdr['INSTRUME'].upper()
                 self.grating = prihdr['OPT_ELEM'].upper()
                 self.echelle = False
-                if self.grating.startswith('E'): self.echelle = True
+                if self.grating.startswith('E'):
+                    self.echelle = True
                 self.propid = prihdr['PROPOSID']
                 self.rootname = prihdr['ROOTNAME']
                 self.detector = prihdr['DETECTOR']
+                if self.grating not in self.gratinglist:
+                    self.gratinglist.append(self.grating)
+                if self.instrument not in self.instrumentlist:
+                    self.instrumentlist.append(self.instrument)
+                if self.instrument == 'COS':
+                    self.aperture = prihdr['APERTURE']
+                elif self.instrument == 'STIS':
+                    self.aperture = prihdr['PROPAPER']
+                else:
+                    print(f'Unexpected value for instrument: {self.instrument}')
+                    self.aperture = prihdr['aperture']
+                if self.aperture not in self.aperturelist:
+                    self.aperturelist.append(self.aperture)
                 target = prihdr['TARGNAME'].strip()
                 if target not in self.targnames:
                     self.targnames.append(target)
                 try:
                     if prihdr['HLSP_LVL'] == 0:
                         self.level0 = True
-                except:
+                except KeyError:
                     pass
             else:
                 print('{} has no data'.format(datafile))
@@ -105,13 +138,12 @@ class HASP_SegmentList(SegmentList):
                 if len(data) > 0:
                     self.primary_headers.append(hdr0)
                     self.first_headers.append(hdr1)
-                    cenwave = hdr0['cenwave']
                     instrument = hdr0['INSTRUME']
                     grating = hdr0['OPT_ELEM']
                     setting = f'{instrument}/{grating}'
                     sdqflags = hdr1['SDQFLAGS']
                     # Remove 16 from SDQFLAGS for STIS data if it's present
-                    if self.instrument == "STIS" and (sdqflags&16) == 16:
+                    if self.instrument == "STIS" and (sdqflags & 16) == 16:
                         sdqflags -= 16
                     exptime = hdr1['EXPTIME']
                     for rownum, row in enumerate(data):
@@ -126,15 +158,37 @@ class HASP_SegmentList(SegmentList):
                         segment.exptime = exptime
                         segment.filename = self.datasets[i]
                         segment.rownum = rownum
-                        if self.instrument == 'COS':
-                            cenwave = hdr0['CENWAVE']
-                            fppos = hdr0['FPPOS']
                         self.members.append(segment)
         return
 
-    def write(self, filename, overwrite=False, level="", version=""):
+    def write(self, filename, overwrite=False, level=""):
+        """Write a product to disk
+        aq
+        Parameters
+        ----------
+    
+        filename : str
+            Name of file to be written to
 
-        if overwrite == False:
+        overwrite : bool
+            If True, overwrite existingfile with same name
+
+        level : str or int
+            HLSP Level:
+                1. Single grating visit level product
+                2. Abutted multi grating visit level product
+                3. Single grating program level product
+                4. Abutted multi grating program level product
+
+        """
+        if level in [1, 2]:
+            ipppssoo = self.rootname[:6]
+        elif level in [3, 4]:
+            ipppssoo = self.rootname[:4]
+        else:
+            print(f'Unexpected value for level: {level}')
+            ipppssoo = self.rootname
+        if overwrite is False:
             if os.path.exists(filename):
                 print(f'{filename} already exists and overwrite=False, skipping write')
                 return
@@ -174,7 +228,6 @@ class HASP_SegmentList(SegmentList):
             first = 0
             last = nelements
         rpt = str(nelements)
-        nchars = str(nelements * 20)
 
         # Table with co-added spectrum
         cw = fits.Column(name='WAVELENGTH', format=rpt+'E', unit="Angstrom")
@@ -182,7 +235,6 @@ class HASP_SegmentList(SegmentList):
         ce = fits.Column(name='ERROR', format=rpt+'E', unit="erg /s /cm**2 /Angstrom")
         cs = fits.Column(name='SNR', format=rpt+'E')
         ct = fits.Column(name='EFF_EXPTIME', format=rpt+'E', unit="s")
-#        cset = fits.Column(name='SETTING', format=nchars+'A', dim=(nelements, 20))
         cd = fits.ColDefs([cw, cf, ce, cs, ct])
         table1 = fits.BinTableHDU.from_columns(cd, nrows=1, header=hdr1)
 
@@ -192,7 +244,6 @@ class HASP_SegmentList(SegmentList):
         table1.data['ERROR'] = self.output_errors[first:last].copy()
         table1.data['SNR'] = self.signal_to_noise[first:last].copy()
         table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
-#        table1.data['SETTING'] = self.setting[first:last].copy()
         # HLSP primary header
         hdr0 = fits.Header()
         hdr0['EXTEND'] = ('T', 'FITS file may contain extensions')
@@ -202,24 +253,28 @@ class HASP_SegmentList(SegmentList):
         hdr0['ORIGIN'] = ('Space Telescope Science Institute', 'FITS file originator')
         hdr0['DATE'] = (str(datetime.date.today()), 'Date this file was written')
         hdr0['FILENAME'] = (os.path.basename(filename), 'Name of this file')
+        hdr0['IPPPSSOO'] = (ipppssoo, 'IPPP or IPPPSS for product')
         hdr0['TELESCOP'] = (self.combine_keys("telescop", "multi"), 'Telescope used to acquire data')
-        hdr0['INSTRUME'] = (self.combine_keys("instrume", "multi"), 'Instrument used to acquire data')
+        hdr0['INSTRUME'] = (self.instrument, 'Instrument used to acquire data')
         hdr0.add_blank('', after='TELESCOP')
         hdr0.add_blank('              / SCIENCE INSTRUMENT CONFIGURATION', before='INSTRUME')
         hdr0['DETECTOR'] = (self.combine_keys("detector", "multi"), 'Detector or channel used to acquire data')
-        hdr0['DISPERSR'] = (self.combine_keys("opt_elem", "multi"), 'Identifier of disperser')
+        hdr0['NUM_EXP'] = (self.num_exp, "Number of exposures combined")
+        hdr0['GRATING'] = ('-'.join(self.gratinglist), 'Grating(s) used')
         hdr0['CENWAVE'] = (self.combine_keys("cenwave", "multi"), 'Central wavelength setting for disperser')
-        hdr0['APERTURE'] = (self.combine_keys("aperture", "multi"), 'Identifier of entrance aperture')
+        hdr0['SPORDER'] = (1, 'Spectral order')
+        hdr0['APERTURE'] = ('-'.join(self.aperturelist), 'Identifier(s) of entrance aperture')
         hdr0['S_REGION'] = (self.obs_footprint(), 'Region footprint')
         hdr0['OBSMODE'] = (self.combine_keys("obsmode", "multi"), 'Instrument operating mode (ACCUM | TIME-TAG)')
         hdr0['TARGNAME'] = self.target
         hdr0.add_blank(after='OBSMODE')
         hdr0.add_blank('              / TARGET INFORMATION', before='TARGNAME')
 
-        hdr0['RADESYS'] = ('ICRS ','World coordinate reference frame')
-        hdr0['TARG_RA'] =  (self.targ_ra,  '[deg] Target right ascension')
-        hdr0['TARG_DEC'] =  (self.targ_dec,  '[deg] Target declination')
+        hdr0['RADESYS'] = ('ICRS ', 'World coordinate reference frame')
+        hdr0['TARG_RA'] = (self.targ_ra, '[deg] Target right ascension')
+        hdr0['TARG_DEC'] = (self.targ_dec, '[deg] Target declination')
         hdr0['PROPOSID'] = (self.combine_keys("proposid", "multi"), 'Program identifier')
+        hdr0['PINAME'] = (self.combine_keys("pr_inv_l", "max"), "Principal Investigator")
         hdr0['MTFLAG'] = (self.combine_keys("mtflag", "multi"), 'Moving Target Flag')
         hdr0['EXTENDED'] = (self.combine_keys("extended", "max"), 'Is target extended?')
         hdr0.add_blank(after='TARG_DEC')
@@ -227,10 +282,9 @@ class HASP_SegmentList(SegmentList):
         hdr0['CAL_VER'] = (f'HSLA Cal {CAL_VER}', 'HLSP processing software version')
         hdr0['HLSPID'] = ('HSLA', 'Name ID of this HLSP collection')
         hdr0['HSLPNAME'] = ('Hubble Spectroscopic Legacy Archive',
-                        'Name ID of this HLSP collection')
+                            'Name ID of this HLSP collection')
         hdr0['HLSPLEAD'] = ('John Debes', 'Full name of HLSP project lead')
-        hdr0['HLSP_VER'] = (version,'HLSP data release version identifier')
-        hdr0['HLSP_LVL'] = (level, 'HSLA HLSP Level')
+        hdr0['HLSP_LVL'] = (level, 'HASP HLSP Level')
         hdr0['LICENSE'] = ('CC BY 4.0', 'License for use of these data')
         hdr0['LICENURL'] = ('https://creativecommons.org/licenses/by/4.0/', 'Data license URL')
         hdr0['REFERENC'] = ('https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..205R', 'Bibliographic ID of primary paper')
@@ -240,6 +294,7 @@ class HASP_SegmentList(SegmentList):
         hdr0.add_blank('           / ARCHIVE SEARCH KEYWORDS', before='CENTRWV')
         hdr0['MINWAVE'] = (self.combine_keys("minwave", "min"), 'Minimum wavelength in spectrum')
         hdr0['MAXWAVE'] = (self.combine_keys("maxwave", "max"), 'Maximum wavelength in spectrum')
+        hdr0['BANDWID'] = hdr0['MAXWAVE'] - hdr0['MINWAVE']
 
         primary = fits.PrimaryHDU(header=hdr0)
 
@@ -269,7 +324,7 @@ class HASP_SegmentList(SegmentList):
         cmin = fits.Column(name='MINWAVE', array=self.combine_keys("minwave", "arr"), format='F9.4', unit='Angstrom')
         cmax = fits.Column(name='MAXWAVE', array=self.combine_keys("maxwave", "arr"), format='F9.4', unit='Angstrom')
 
-        cd2 = fits.ColDefs([cfn, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm, cde, cexp, cmin ,cmax])
+        cd2 = fits.ColDefs([cfn, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm, cde, cexp, cmin, cmax])
 
         table2 = fits.BinTableHDU.from_columns(cd2, header=hdr2)
 
@@ -294,42 +349,43 @@ class HASP_SegmentList(SegmentList):
         return s_region
 
     def combine_keys(self, key, method):
-        keymap= {"HST": {"expstart": ("expstart", 1),
-                         "expend": ("expend", 1),
-                         "exptime": ("exptime", 1),
-                         "telescop": ("telescop", 0),
-                         "instrume": ("instrume", 0),
-                         "detector": ("detector", 0),
-                         "opt_elem": ("opt_elem", 0),
-                         "cenwave": ("cenwave", 0),
-                         "aperture": ("aperture", 0),
-                         "obsmode": ("obsmode", 0),
-                         "proposid": ("proposid", 0),
-                         "centrwv": ("centrwv", 0),
-                         "minwave": ("minwave", 0),
-                         "maxwave": ("maxwave", 0),
-                         "filename": ("filename", 0),
-                         "specres": ("specres", 0),
-                         "cal_ver": ("cal_ver", 0),
-                         "mtflag": ("mtflag", 0),
-                         "extended": ("extended", 0)},
-                "FUSE": {"expstart": ("obsstart", 0),
-                         "expend": ("obsend", 0),
-                         "exptime": ("obstime", 0),
-                         "telescop": ("telescop", 0),
-                         "instrume": ("instrume", 0),
-                         "detector": ("detector", 0),
-                         "opt_elem": ("detector", 0),
-                         "cenwave": ("centrwv", 0),
-                         "aperture": ("aperture", 0),
-                         "obsmode": ("instmode", 0),
-                         "proposid": ("prgrm_id", 0),
-                         "centrwv": ("centrwv", 0),
-                         "minwave": ("wavemin", 0),
-                         "maxwave": ("wavemax", 0),
-                         "filename": ("filename", 0),
-                         "specres": ("spec_rp", 1),
-                         "cal_ver": ("cf_vers", 0)}}
+        keymap = {"HST": {"expstart": ("expstart", 1),
+                          "expend": ("expend", 1),
+                          "exptime": ("exptime", 1),
+                          "telescop": ("telescop", 0),
+                          "instrume": ("instrume", 0),
+                          "detector": ("detector", 0),
+                          "opt_elem": ("opt_elem", 0),
+                          "cenwave": ("cenwave", 0),
+                          "aperture": ("aperture", 0),
+                          "obsmode": ("obsmode", 0),
+                          "proposid": ("proposid", 0),
+                          "centrwv": ("centrwv", 0),
+                          "minwave": ("minwave", 0),
+                          "maxwave": ("maxwave", 0),
+                          "filename": ("filename", 0),
+                          "specres": ("specres", 0),
+                          "cal_ver": ("cal_ver", 0),
+                          "mtflag": ("mtflag", 0),
+                          "extended": ("extended", 0),
+                          "pr_inv_l": ("pr_inv_l", 0)},
+                  "FUSE": {"expstart": ("obsstart", 0),
+                           "expend": ("obsend", 0),
+                           "exptime": ("obstime", 0),
+                           "telescop": ("telescop", 0),
+                           "instrume": ("instrume", 0),
+                           "detector": ("detector", 0),
+                           "opt_elem": ("detector", 0),
+                           "cenwave": ("centrwv", 0),
+                           "aperture": ("aperture", 0),
+                           "obsmode": ("instmode", 0),
+                           "proposid": ("prgrm_id", 0),
+                           "centrwv": ("centrwv", 0),
+                           "minwave": ("wavemin", 0),
+                           "maxwave": ("wavemax", 0),
+                           "filename": ("filename", 0),
+                           "specres": ("spec_rp", 1),
+                           "cal_ver": ("cf_vers", 0)}}
 
         vals = []
         for i in range(len(self.primary_headers)):
@@ -365,14 +421,13 @@ class HASP_SegmentList(SegmentList):
             return np.sum(vals)
         elif method == "arr":
             return np.array(vals)
-    
+
     def calculate_statistics(self, verbose=False):
         """Calcuate statistics for each of the exposures that
         contribute to the coadded product
-        
+
         """
         print(f'Using a maximum SNR of {self.snrmax} in flux-based filtering')
-        statistics = []
         nsegments = len(self.members)
         if nsegments == 1:
             segment = self.members[0]
@@ -400,7 +455,7 @@ class HASP_SegmentList(SegmentList):
             npts = len(indices)
             flux = segment.data['flux'][goodpixels]
             error = segment.data['error'][goodpixels]
-            deviation =  np.zeros(npts)
+            deviation = np.zeros(npts)
             deviation_squared = np.zeros(npts)
             ndeviations[nseg] = 0
             for i in range(npts):
@@ -437,6 +492,7 @@ class HASP_SegmentList(SegmentList):
 
         return filename, rownum, ndeviations, mean_deviation, median_deviation, mean_squared_deviation, median_squared_deviation
 
+
 class HASP_COSSegmentList(COSSegmentList, HASP_SegmentList):
     pass
 
@@ -449,7 +505,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False):
+def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False):
     outdir_inplace = False
     if outdir is None:
         HLSP_DIR = os.getenv('HLSP_DIR')
@@ -490,6 +546,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
         targname = prihdr['TARGNAME']
         visit = myfile[-14:-12]
         proposal = prihdr['PROPOSID']
+        aperture = prihdr['PROPAPER']
         visit = (proposal, visit)
         obsmode = (instrument, grating, detector)
         visitmode = (instrument, grating, detector, targname, visit)
@@ -512,7 +569,7 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
             visitlist.append(visit)
         if proposal not in proposallist:
             proposallist.append(proposal)
-        print(myfile, targname, instrument, detector, grating, proposal, visit)
+        print(myfile, targname, instrument, detector, grating, aperture, proposal, visit)
         f1.close()
 
     visitlist.sort()
@@ -548,7 +605,6 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
             products = defaultdict(lambda: None)
             productlist = []
             productdict = {}
-            level = 2
             uniqmodes = []
             no_good_data = False
             for uniqmode in thisvisitandtargetspec:
@@ -591,8 +647,6 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
                         prod.coadd()
-                        setting_array = np.repeat(np.array(setting.ljust(20), dtype='str'), prod.nelements)
-                        prod.setting = setting_array
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
                             no_good_data = True
@@ -609,7 +663,8 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                         print(f'No valid data for grating {grating}')
                 # this writes the output file
                 # If making HLSPs for a DR, put them in the official folder
-                if no_good_data: break
+                if no_good_data:
+                    break
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec = prod.get_coords()
                 target = prod.target.lower()
@@ -618,25 +673,23 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                 else:
                     dir_target = target
                 if outdir_inplace is True:
-                    outdir = os.path.join(HLSP_DIR, dir_target, version)
+                    outdir = os.path.join(HLSP_DIR, dir_target)
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
-                outname = create_output_file_name(prod, producttype, version, level=level)
+                outname = create_output_file_name(prod, producttype)
                 outname = os.path.join(outdir, outname)
-#                write_stats(result, outname)
-                prod.write(outname, clobber, level=level, version=version)
+                prod.write(outname, clobber, level=1)
                 print(f"   Wrote {outname}")
                 productlist.append(prod)
                 products[setting] = prod
                 productdict[setting] = prod
 
-            abutted_product = create_level4_products(productlist, productdict, producttype, uniqmodes, outdir)
+            abutted_product = create_level4_products(productlist, productdict)
             if abutted_product is not None:
-                filename = create_output_file_name(abutted_product, producttype, version, level=level)
+                filename = create_output_file_name(abutted_product, producttype)
                 filename = os.path.join(outdir, filename)
-                abutted_product.write(filename, clobber, level=level, version=version)
+                abutted_product.write(filename, clobber, level=2)
                 print(f"   Wrote {filename}")
-
 
     print('Looping over proposals')
     producttype = 'proposal'
@@ -663,12 +716,11 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                 thistarget = proposalspec[3]
                 if target == thistarget:
                     thisproposalandtargetspec.append(proposalspec)
-                    
+
             # Create dictionary of all products, with each set to None by default
             products = defaultdict(lambda: None)
             productlist = []
             productdict = {}
-            level = 2
             uniqmodes = []
             no_good_data = False
             for uniqmode in thisproposalandtargetspec:
@@ -713,8 +765,6 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                     if len(prod.members) > 0:
                         prod.create_output_wavelength_grid()
                         prod.coadd()
-                        setting_array = np.repeat(np.array(setting.ljust(20), dtype='str'), prod.nelements)
-                        prod.setting = setting_array
                         if prod.first_good_wavelength is None:
                             print("No good data, skipping")
                             no_good_data = True
@@ -729,7 +779,8 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                         print(f"No valid data for grating {grating}")
                     # this writes the output file
                     # If making HLSPs for a DR, put them in the official folder
-                if no_good_data: break
+                if no_good_data:
+                    break
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec = prod.get_coords()
                 target = prod.target.lower()
@@ -738,23 +789,24 @@ def main(indir, outdir, version=VERSION, clobber=False, threshold=-50, snrmax=20
                 else:
                     dir_target = target
                 if outdir_inplace is True:
-                    outdir = os.path.join(HLSP_DIR, dir_target, version)
+                    outdir = os.path.join(HLSP_DIR, dir_target)
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
-                outname = create_output_file_name(prod, producttype, version, level=level)
+                outname = create_output_file_name(prod, producttype)
                 outname = os.path.join(outdir, outname)
-                prod.write(outname, clobber, level=level, version=version)
+                prod.write(outname, clobber, level=3)
                 print(f"   Wrote {outname}")
                 products[f'{instrument}/{grating}'] = prod
                 productlist.append(prod)
                 productdict[setting] = prod
 
-            abutted_product = create_level4_products(productlist, productdict, producttype, uniqmodes, outdir)
+            abutted_product = create_level4_products(productlist, productdict)
             if abutted_product is not None:
-                filename = create_output_file_name(abutted_product, producttype, version, level=level)
+                filename = create_output_file_name(abutted_product, producttype)
                 filename = os.path.join(outdir, filename)
-                abutted_product.write(filename, clobber, level=level, version=version)
+                abutted_product.write(filename, clobber, level=4)
                 print(f"   Wrote {filename}")
+
 
 def analyse_result(results, threshold=-50):
     files_to_cull = []
@@ -774,20 +826,22 @@ def analyse_result(results, threshold=-50):
         else:
             print(f'File {filename} already selected for removal from product')
     return files_to_cull
-    
+
+
 def cull_files(files_to_cull, file_list):
     for thisfile in files_to_cull:
         if thisfile in file_list:
             file_list.remove(thisfile)
+
 
 def prefilter(file_list, filters):
     """Pre-filter the input exposure filenames
     Possible filters to apply are:
 
     'EXPFLAG': Filter out datasets that EXPFLAG keyword anything other than 'NORMAL'
-    
+
     'ZEROEXPTIME': Filter out datasets that have EXPTIME = 0.0
-    
+
     'PLANNEDVSACTUAL': Filter out datasets where the actual exposure time is less than a certain
                        fraction of planned exposure time
 
@@ -818,7 +872,7 @@ def prefilter(file_list, filters):
             else:
                 print(f'File {fitsfile} removed from products because EXPTIME = {value}')
         file_list = goodfiles
-    
+
     if 'PLANNEDVSACTUAL' in filters:
         goodfiles = []
         for fitsfile in file_list:
@@ -933,6 +987,7 @@ def prefilter(file_list, filters):
 
     return goodfiles
 
+
 def check_for_moving_targets(files_to_import):
     not_moving = []
     for fitsfile in files_to_import:
@@ -949,43 +1004,19 @@ def check_for_moving_targets(files_to_import):
         print('Some (but not all) files with this target name have MTFLAG="T"')
     return not_moving
 
-def write_stats(results, outfile):
-    npts = len(results[0])
-    with open('stats.txt', 'at') as f:
-        for i in range(npts):
-            outstring = f'{outfile}, {results[0][i]}, {results[1][i]}, {results[2][i]}, {results[3][i]}, '
-            outstring = outstring + f'{results[4][i]}, {results[5][i]}, {results[6][i]}\n'
-            f.write(outstring)
-        f.close()
 
-
-def create_output_file_name(prod, producttype, version=VERSION, level=3):
+def create_output_file_name(prod, producttype):
     instrument = prod.instrument.lower()   # will be either cos or stis. If abutted can be cos-stis
     grating = prod.disambiguated_grating.lower()
     target = prod.target.lower()
-    version = version.lower()
     propid = str(prod.propid)
     ipppss = prod.rootname[:6]
     ippp = prod.rootname[:4]
-    detector = prod.detector.lower()
 
     # Target names can't have a period in them or it breaks MAST
     if "." in target:
         target = rename_target(target)
-    tel = 'hst'
-    if level == 0:
-        suffix = "spec"
-    if level == 1:
-        suffix = "mspec"
-    elif level == 3 or level == 2:
-        suffix = "cspec"
-    elif level == 4:
-        suffix = "preview-spec"
-        if "G430L" in prod.grating or "G750L" in prod.grating:
-            grating = "uv-opt"
-        else:
-            grating = "uv"
-
+    suffix = "cspec"
     # Need to add logic for uv-opt here
     if producttype == 'visit':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
@@ -993,9 +1024,11 @@ def create_output_file_name(prod, producttype, version=VERSION, level=3):
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
     return name
 
+
 def rename_target(target_name):
     new_target_name = target_name.replace('.', '-')
     return new_target_name
+
 
 def call_main():
 
@@ -1005,8 +1038,6 @@ def call_main():
                         help="Directory(ies) with data to combine")
     parser.add_argument("-o", "--outdir", default=None,
                         help="Directory for output HLSPs")
-    parser.add_argument("-v", "--version", default=VERSION,
-                        help="Version number of the HLSP")
     parser.add_argument("-c", "--clobber", default=False,
                         action="store_true",
                         help="If True, overwrite existing products")
@@ -1021,7 +1052,7 @@ def call_main():
                         help="Disable keyword based filtering (except for STIS PRISM data, which is always filtered)")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.version, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering)
+    main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering)
 
 
 if __name__ == '__main__':
