@@ -262,7 +262,7 @@ class HASP_SegmentList(SegmentList):
         hdr0['GRATING'] = ('-'.join(self.gratinglist), 'Grating(s) used')
         hdr0['CENWAVE'] = (self.combine_keys("cenwave", "multi"), 'Central wavelength setting for disperser')
         hdr0['SPORDER'] = (1, 'Spectral order')
-        hdr0['APERTURE'] = ('-'.join(self.aperturelist), 'Identifier(s) of entrance aperture')
+        hdr0['APERTURE'] = (','.join(self.aperturelist), 'Identifier(s) of entrance aperture')
         hdr0['S_REGION'] = (self.obs_footprint(), 'Region footprint')
         hdr0['OBSMODE'] = (self.combine_keys("obsmode", "multi"), 'Instrument operating mode (ACCUM | TIME-TAG)')
         hdr0['TARGNAME'] = self.target

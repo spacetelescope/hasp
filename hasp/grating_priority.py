@@ -253,8 +253,12 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.grating = output_grating
         product_abutted.disambiguated_grating = output_grating
         product_abutted.gratinglist = product_short.gratinglist
-        product_abutted.aperturelist = product_short.aperturelist
         product_abutted.aperturelist = list(set(product_short.aperturelist + product_long.aperturelist))
+        product_abutted.aperturelist.sort()
+        if product_long.instrument not in product_short.instrumentlist:
+            product_abutted.instrumentlist = product_short.instrumentlist.append(product_long.instrument)
+        else:
+            product_abutted.instrumentlist = product_short.instrumentlist 
         product_abutted.instrumentlist = product_short.instrumentlist
         product_short.target = product_short.get_targname()
         product_long.target = product_long.get_targname()
