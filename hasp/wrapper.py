@@ -166,7 +166,6 @@ class HASP_SegmentList(SegmentList):
         aq
         Parameters
         ----------
-    
         filename : str
             Name of file to be written to
 
@@ -833,6 +832,9 @@ def cull_files(files_to_cull, file_list):
         if thisfile in file_list:
             file_list.remove(thisfile)
 
+PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
+              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM',
+              'COSBOA']
 
 def prefilter(file_list, filters):
     """Pre-filter the input exposure filenames
@@ -844,6 +846,22 @@ def prefilter(file_list, filters):
 
     'PLANNEDVSACTUAL': Filter out datasets where the actual exposure time is less than a certain
                        fraction of planned exposure time
+
+    'MOVINGTARGET': Filter exposures of moving targets from program-level products
+
+    'NOTFINELOCK': Filter exposures for which FGSLOCK is not 'FINE'
+
+    'POSTARG1': Filter exposures that have POSTARG1 != 0.0
+
+    'POSTARG2': Filter exposures POSTARG2 != 0.0 and P1_PURPS != 'DITHER'
+
+    'DITHERPERPENDICULARTOSLIT': Filter exposures where PATTERN1 = STIS-PERP-TO-SLIT and P1_FRAME = POS-TARG
+
+    'MOSAICPURPOSE': Filter exposures that have P1_PURPS = MOSAIC
+
+    'PRISM': Filter STIS exposures with OPT_ELEM = PRISM
+
+    'COSBOA': Filter COS exposures with APERTURE = BOA (Bright Object Aperture)
 
     """
 
@@ -989,6 +1007,26 @@ def prefilter(file_list, filters):
 
 
 def check_for_moving_targets(files_to_import):
+    """Program level products are not made for moving targets
+    
+    This function removes files with moving targets from the list of input files and returns
+    a list without these files
+
+    Moving target have primary header keyword MTFLAG set to 'T'
+    
+    Parameters
+    ----------
+    
+    files_to_import : list
+        List of files to search for moving targets
+        
+    Returns
+    -------
+    
+    not_moving : list
+        List of files with non-moving targets
+    
+    """
     not_moving = []
     for fitsfile in files_to_import:
         f1 = fits.open(fitsfile)
@@ -999,6 +1037,7 @@ def check_for_moving_targets(files_to_import):
         else:
             targname = prihdr['TARGNAME']
             print(f'File {fitsfile} removed from program products because {targname} is a moving target')
+        f1.close()
     ngood = len(not_moving)
     if ngood != 0 and ngood != len(files_to_import):
         print('Some (but not all) files with this target name have MTFLAG="T"')
@@ -1017,7 +1056,6 @@ def create_output_file_name(prod, producttype):
     if "." in target:
         target = rename_target(target)
     suffix = "cspec"
-    # Need to add logic for uv-opt here
     if producttype == 'visit':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
     elif producttype == 'proposal':
