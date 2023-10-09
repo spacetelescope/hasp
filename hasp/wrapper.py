@@ -304,6 +304,7 @@ class HASP_SegmentList(SegmentList):
         hdr2['EXTNAME'] = ('PROVENANCE', 'Metadata for contributing observations')
         # set up the table columns
         cfn = fits.Column(name='FILENAME', array=self.combine_keys("filename", "arr"), format='A64')
+        ce_n = fits.Column(name='EXPNAME', array=self.combine_keys("expname", "arr"), format='A32')
         cpid = fits.Column(name='PROPOSID', array=self.combine_keys("proposid", "arr"), format='A32')
         ctel = fits.Column(name='TELESCOPE', array=self.combine_keys("telescop", "arr"), format='A32')
         cins = fits.Column(name='INSTRUMENT', array=self.combine_keys("instrume", "arr"), format='A32')
@@ -323,7 +324,7 @@ class HASP_SegmentList(SegmentList):
         cmin = fits.Column(name='MINWAVE', array=self.combine_keys("minwave", "arr"), format='F9.4', unit='Angstrom')
         cmax = fits.Column(name='MAXWAVE', array=self.combine_keys("maxwave", "arr"), format='F9.4', unit='Angstrom')
 
-        cd2 = fits.ColDefs([cfn, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm, cde, cexp, cmin, cmax])
+        cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm, cde, cexp, cmin, cmax])
 
         table2 = fits.BinTableHDU.from_columns(cd2, header=hdr2)
 
@@ -367,7 +368,8 @@ class HASP_SegmentList(SegmentList):
                           "cal_ver": ("cal_ver", 0),
                           "mtflag": ("mtflag", 0),
                           "extended": ("extended", 0),
-                          "pr_inv_l": ("pr_inv_l", 0)},
+                          "pr_inv_l": ("pr_inv_l", 0),
+                          "expname": ("expname", 1)},
                   "FUSE": {"expstart": ("obsstart", 0),
                            "expend": ("obsend", 0),
                            "exptime": ("obstime", 0),
@@ -731,7 +733,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 if (instrument, grating, detector) not in uniqmodes:
                     uniqmodes.append((instrument, grating, detector))
                 files_to_import = proposaldict[uniqmode]
-                if 'MOVINGTARGET' in PREFILTERS:
+                if 'MOVINGTARGET' in keyword_filters:
                     files_to_import = check_for_moving_targets(files_to_import)
                 # Flux filtering loop
                 while True:
