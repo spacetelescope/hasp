@@ -1,29 +1,50 @@
 import numpy as np
 
-GRATING_PRIORITIES = {'STIS/E140M': {'minwave': 1144, 'maxwave': 1710, 'priority': 1},
+GRATING_PRIORITIES = {'STIS/E140M': {'minwave': 1141.6, 'maxwave': 1727.2, 'priority': 1},
                       'COS/G130M': {'minwave': 900, 'maxwave': 1470, 'priority': 2},
                       'COS/G160M': {'minwave': 1342, 'maxwave': 1800, 'priority': 3},
-                      'STIS/E140H': {'minwave': 1139, 'maxwave': 1700, 'priority': 4},
-                      'STIS/G140M': {'minwave': 1140, 'maxwave': 1740, 'priority': 5},
-                      'STIS/E230M': {'minwave': 1605, 'maxwave': 3110, 'priority': 6},
-                      'STIS/E230H': {'minwave': 1620, 'maxwave': 3150, 'priority': 7},
-                      'STIS/G230M': {'minwave': 1640, 'maxwave': 3100, 'priority': 8},
+                      'STIS/E140H': {'minwave': 1141.1, 'maxwave': 1687.9, 'priority': 4},
+                      'STIS/G140M': {'minwave': 1145.1, 'maxwave': 1741.9, 'priority': 5},
+                      'STIS/E230M': {'minwave': 1606.7, 'maxwave': 3119.2, 'priority': 6},
+                      'STIS/E230H': {'minwave': 1629.0, 'maxwave': 3156.0, 'priority': 7},
+                      'STIS/G230M': {'minwave': 1641.8, 'maxwave': 3098.2, 'priority': 8},
                       'COS/G140L': {'minwave': 901, 'maxwave': 2150, 'priority': 9},
-                      'STIS/G230MB': {'minwave': 1641, 'maxwave': 3190, 'priority': 10},
+                      'STIS/G230MB': {'minwave': 1635.0, 'maxwave': 3184.5, 'priority': 10},
                       'COS/G185M': {'minwave': 1664, 'maxwave': 2134, 'priority': 11},
                       'COS/G225M': {'minwave': 2069, 'maxwave': 2526, 'priority': 12},
                       'COS/G285M': {'minwave': 2474, 'maxwave': 3221, 'priority': 13},
-                      'STIS/G140L': {'minwave': 1150, 'maxwave': 1730, 'priority': 14},
-                      'STIS/G430M': {'minwave': 3020, 'maxwave': 5610, 'priority': 15},
-                      'STIS/G230L': {'minwave': 1570, 'maxwave': 3180, 'priority': 16},
-                      'STIS/G230LB': {'minwave': 1680, 'maxwave': 3060, 'priority': 17},
+                      'STIS/G140L': {'minwave': 1138.4, 'maxwave': 1716.4, 'priority': 14},
+                      'STIS/G430M': {'minwave': 3021.9, 'maxwave': 5610.1, 'priority': 15},
+                      'STIS/G230L': {'minwave': 1582.0, 'maxwave': 3158.7, 'priority': 16},
+                      'STIS/G230LB': {'minwave': 1667.1, 'maxwave': 3071.6, 'priority': 17},
                       'COS/G230L': {'minwave': 1650, 'maxwave': 3200, 'priority': 18},
-                      'STIS/G750M': {'minwave': 5450, 'maxwave': 10140, 'priority': 19},
-                      'STIS/G430L': {'minwave': 2900, 'maxwave': 5700, 'priority': 20},
-                      'STIS/G750L': {'minwave': 5240, 'maxwave': 10270, 'priority': 21},
-}
+                      'STIS/G750M': {'minwave': 5464.6, 'maxwave': 10645.1, 'priority': 19},
+                      'STIS/G430L': {'minwave': 2895.9, 'maxwave': 5704.4, 'priority': 20},
+                      'STIS/G750L': {'minwave': 5261.3, 'maxwave': 10252.3, 'priority': 21},
+                      }
 
-def create_level4_products(productlist, productdict, producttype, uniqmodes, outdir):
+
+def create_level4_products(productlist, productdict):
+    """Create a level 4 product by abutting single grating products
+
+    Parameters
+    ----------
+
+    productlist : list
+        List of products to be combined
+
+    productdict : dictionary
+        Dictionary of settings for members of the productlist
+        The key is the setting: f'{instrument}/{grating}'
+        The value is the product
+
+    Returns
+    -------
+
+    abutted_product : SegmentList
+        The abutted product
+
+    """
     used_gratings_list = get_used_gratings(productlist)
     ngratings = len(used_gratings_list)
     if ngratings == 1:
@@ -36,7 +57,8 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
     for grating in used_gratings_list:
         actual_minwave = productdict[grating['name']].first_good_wavelength
         actual_maxwave = productdict[grating['name']].last_good_wavelength
-        print(grating['name'], f"{grating['minwave']}-{grating['maxwave']}", '(Actual: {:.1f}-{:.1f})'.format(actual_minwave, actual_maxwave))
+        print(grating['name'], f"{grating['minwave']}-{grating['maxwave']}",
+              '(Actual: {:.1f}-{:.1f})'.format(actual_minwave, actual_maxwave))
     score = 2 ** ngratings
     if ngratings > 0:
         for grating in used_gratings_list:
@@ -50,9 +72,14 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
         max_wavelength = min(actual_maxwave, grating['maxwave'])
         if min_wavelength != grating['minwave'] or max_wavelength != grating['maxwave']:
             print('Transition wavelengths tweaked')
-        transition_wavelengths.append({'grating': grating['name'], 'wavelength': min_wavelength, 'delta': grating['score']})
-        transition_wavelengths.append({'grating': grating['name'], 'wavelength': max_wavelength, 'delta': -grating['score']})
-    transition_wavelengths = sorted(transition_wavelengths, key=lambda wavelength: wavelength['wavelength'])
+        transition_wavelengths.append({'grating': grating['name'],
+                                       'wavelength': min_wavelength,
+                                       'delta': grating['score']})
+        transition_wavelengths.append({'grating': grating['name'],
+                                       'wavelength': max_wavelength,
+                                       'delta': -grating['score']})
+    transition_wavelengths = sorted(transition_wavelengths,
+                                    key=lambda wavelength: wavelength['wavelength'])
     cumulative_sum = 0
     this_grating = None
     abutted_product = None
@@ -68,7 +95,8 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
         elif n_with_this_score == 0:
             new_grating = None
         else:
-            print("Unexpected number of gratings with score {}: {}".format(highest_power_of_two, n_with_this_score))
+            print("Unexpected number of gratings with score {}: {}".format(highest_power_of_2,
+                                                                           n_with_this_score))
             new_grating = "Error"
         if new_grating != this_grating:
             if abutted_product is None:
@@ -84,31 +112,94 @@ def create_level4_products(productlist, productdict, producttype, uniqmodes, out
             this_grating = new_grating
     return abutted_product
 
+
 def get_used_gratings(productlist):
+    """Get the list of used gratings from the product list and return that list
+    sorted by grating priority
+
+    Parameters
+    ----------
+
+    productlist : list
+        List of products
+
+
+    Returns
+    -------
+
+    used_gratings_list : list
+        List of gratings used in the products, sorted by grating priority
+        Each grating is an entry from the GRATING_PRIORITIES dictionary, which
+        is a key/value pair with key = setting (f'{instrument}/{grating}') and the
+        value is the dictionary of grating parameters: {'minwave': 1000, 'maxwave': 2000,
+        priority: 1}
+
+    """
     used_gratings_list = []
-    used_gratings_dict = {}
     for product in productlist:
         setting = product.instrument + '/' + product.grating
         if setting in GRATING_PRIORITIES:
             grating_dict = GRATING_PRIORITIES[setting]
             grating_dict['name'] = setting
             used_gratings_list.append(grating_dict)
-            used_gratings_dict[setting] = grating_dict
     used_gratings_list = sorted(used_gratings_list, key=lambda grating: grating['priority'])
     return used_gratings_list
 
+
 def hp2(number, largest_power):
-    # Returns the highest power of 2 that is <= number, up to
-    # and including 2**largest_power
-    if number == 0: return 0
+    """
+    Returns the highest power of 2 that is <= number, up to
+    and including 2**largest_power
+
+    Parameters
+    ----------
+
+    number : int
+        Number for which the highest lower power of two is required
+
+    largest_power : int
+        Largest power of 2 to try
+
+    Returns
+    -------
+
+    value : int
+        Largest power of 2 less than `number`
+
+    """
+    if number == 0:
+        return 0
     for i in range(largest_power, 0, -1):
         if number & (2 ** i):
             break
     return 2 ** i
 
+
 def abut(product_short, product_long, transition_wavelength):
     """Abut the spectra in 2 products.  Assumes the first argument is the shorter
     wavelength.
+
+    Parameters
+    ----------
+
+    product_short : SegmentList or None
+        Product with the smaller minimum wavelength
+        Will be None for the first pair of products
+
+    product_long : SegmentList or None
+        Product with the larger minimum wavelength
+        Will be None for the last pair of products
+
+    transition_wavelength : float
+        Wavelength where the output product is from product_short for
+        wavelengths less than the transition wavelength, and from product_long
+        for wavelengths greater than the transition wavelength
+
+    Returns
+    -------
+
+    product_abutted : SegmentList
+        Product made by abutting product_short and product_long
     """
     if product_short is not None and product_long is not None:
         if transition_wavelength == "bad":
@@ -147,7 +238,6 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.output_errors = np.zeros(nout)
         product_abutted.signal_to_noise = np.zeros(nout)
         product_abutted.output_exptime = np.zeros(nout)
-        product_abutted.setting = np.repeat(np.array(20*' ',dtype='str'), nout)
         product_abutted.output_wavelength[:transition_index_short] = product_short.output_wavelength[:transition_index_short]
         product_abutted.output_wavelength[transition_index_short:] = product_long.output_wavelength[transition_index_long:]
         product_abutted.output_flux[:transition_index_short] = product_short.output_flux[:transition_index_short]
@@ -158,13 +248,18 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.signal_to_noise[transition_index_short:] = product_long.signal_to_noise[transition_index_long:]
         product_abutted.output_exptime[:transition_index_short] = product_short.output_exptime[:transition_index_short]
         product_abutted.output_exptime[transition_index_short:] = product_long.output_exptime[transition_index_long:]
-        product_abutted.setting[:transition_index_short] = product_short.setting[:transition_index_short]
-        product_abutted.setting[transition_index_short:] = product_long.setting[transition_index_long:]
         product_abutted.primary_headers = product_short.primary_headers + product_long.primary_headers
         product_abutted.first_headers = product_short.first_headers + product_long.first_headers
         product_abutted.grating = output_grating
         product_abutted.disambiguated_grating = output_grating
         product_abutted.gratinglist = product_short.gratinglist
+        product_abutted.aperturelist = list(set(product_short.aperturelist + product_long.aperturelist))
+        product_abutted.aperturelist.sort()
+        if product_long.instrument not in product_short.instrumentlist:
+            product_abutted.instrumentlist = product_short.instrumentlist.append(product_long.instrument)
+        else:
+            product_abutted.instrumentlist = product_short.instrumentlist 
+        product_abutted.instrumentlist = product_short.instrumentlist
         product_short.target = product_short.get_targname()
         product_long.target = product_long.get_targname()
         if product_short.instrument in product_long.instrument:
@@ -186,10 +281,11 @@ def abut(product_short, product_long, transition_wavelength):
                     product_abutted.targnames = [target_name]
         if not target_matched:
             product_abutted = None
-            print(f'Trying to abut spectra from 2 different targets:')
+            print('Trying to abut spectra from 2 different targets:')
             print(f'{product_short.target} and {product_long.target}')
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
+        product_abutted.num_exp = product_short.num_exp + product_long.num_exp
     elif product_short is not None:
         # This will be the case for the last grating
         output_grating = product_short.grating
@@ -203,24 +299,25 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.output_errors = np.zeros(nout)
         product_abutted.signal_to_noise = np.zeros(nout)
         product_abutted.output_exptime = np.zeros(nout)
-        product_abutted.setting = np.zeros(nout)
         product_abutted.output_wavelength = product_short.output_wavelength[:transition_index_short]
         product_abutted.output_flux = product_short.output_flux[:transition_index_short]
         product_abutted.output_errors = np.abs(product_short.output_errors[:transition_index_short])
         product_abutted.signal_to_noise = product_short.signal_to_noise[:transition_index_short]
         product_abutted.output_exptime = product_short.output_exptime[:transition_index_short]
-        product_abutted.setting = product_short.setting[:transition_index_short]
         product_abutted.primary_headers = product_short.primary_headers
         product_abutted.first_headers = product_short.first_headers
         product_abutted.grating = product_short.grating
         product_abutted.disambiguated_grating = product_short.disambiguated_grating
         product_abutted.gratinglist = product_short.gratinglist
+        product_abutted.aperturelist = product_short.aperturelist
+        product_abutted.instrumentlist = product_short.instrumentlist
         product_abutted.instrument = product_short.instrument
         product_abutted.target = product_short.target
         target_matched = True
         product_abutted.targnames = [product_short.target]
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
+        product_abutted.num_exp = product_short.num_exp
     elif product_long is not None:
         # This is the case for the first grating
         output_grating = product_long.disambiguated_grating
@@ -234,18 +331,18 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.output_errors = np.zeros(nout)
         product_abutted.signal_to_noise = np.zeros(nout)
         product_abutted.output_exptime = np.zeros(nout)
-        product_abutted.settimg = np.zeros(nout)
         product_abutted.output_wavelength = product_long.output_wavelength[transition_index_long:]
         product_abutted.output_flux = product_long.output_flux[transition_index_long:]
         product_abutted.output_errors = np.abs(product_long.output_errors[transition_index_long:])
         product_abutted.signal_to_noise = product_long.signal_to_noise[transition_index_long:]
         product_abutted.output_exptime = product_long.output_exptime[transition_index_long:]
-        product_abutted.setting = product_long.setting[transition_index_long:]
         product_abutted.primary_headers = product_long.primary_headers
         product_abutted.first_headers = product_long.first_headers
         product_abutted.grating = product_long.disambiguated_grating
         product_abutted.disambiguated_grating = product_long.disambiguated_grating
         product_abutted.gratinglist = product_long.gratinglist
+        product_abutted.aperturelist = product_long.aperturelist
+        product_abutted.instrumentlist = product_long.instrumentlist
         product_long.target = product_long.get_targname()
         product_abutted.instrument = product_long.instrument
         product_abutted.target = product_long.target
@@ -253,6 +350,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.targnames = [product_long.target]
         product_abutted.propid = product_long.propid
         product_abutted.rootname = product_long.rootname
+        product_abutted.num_exp = product_long.num_exp
     else:
         product_abutted = None
     product_abutted.targ_ra, product_abutted.targ_dec = product_abutted.get_coords()
