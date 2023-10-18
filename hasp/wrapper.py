@@ -507,14 +507,6 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
 
 
 def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False):
-    outdir_inplace = False
-    if outdir is None:
-        HLSP_DIR = os.getenv('HLSP_DIR')
-        if HLSP_DIR is None:
-            print("Environment variable HLSP_DIR must be defined if outdir is not specified")
-            raise RuntimeError("Please set HLSP_DIR and restart")
-        outdir_inplace = True
-
     # Find out which unique modes are present
     # For single visit products, a unique mode is
     # (target, instrument, grating, detector, visit)
@@ -669,12 +661,6 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec = prod.get_coords()
                 target = prod.target.lower()
-                if "." in target:
-                    dir_target = rename_target(target)
-                else:
-                    dir_target = target
-                if outdir_inplace is True:
-                    outdir = os.path.join(HLSP_DIR, dir_target)
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
                 outname = create_output_file_name(prod, producttype)
@@ -785,12 +771,6 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec = prod.get_coords()
                 target = prod.target.lower()
-                if "." in target:
-                    dir_target = rename_target(target)
-                else:
-                    dir_target = target
-                if outdir_inplace is True:
-                    outdir = os.path.join(HLSP_DIR, dir_target)
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
                 outname = create_output_file_name(prod, producttype)
@@ -1054,9 +1034,8 @@ def create_output_file_name(prod, producttype):
     ipppss = prod.rootname[:6]
     ippp = prod.rootname[:4]
 
-    # Target names can't have a period in them or it breaks MAST
-    if "." in target:
-        target = rename_target(target)
+    target = sanitize_targname(target)
+
     suffix = "cspec"
     if producttype == 'visit':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
@@ -1065,8 +1044,10 @@ def create_output_file_name(prod, producttype):
     return name
 
 
-def rename_target(target_name):
-    new_target_name = target_name.replace('.', '-')
+def sanitize_targname(target_name):
+    new_target_name = target_name.replace('.', 'd')
+    new_target_name = new_target_name.replace('+', 'p')
+    new_target_name = new_target_name.replace('_', '-')
     return new_target_name
 
 
