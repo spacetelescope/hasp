@@ -24,7 +24,7 @@ GRATING_PRIORITIES = {'STIS/E140M': {'minwave': 1141.6, 'maxwave': 1727.2, 'prio
                       }
 
 
-def create_level4_products(productlist, productdict):
+def create_level4_products(productlist, productdict, grating_table=GRATING_PRIORITIES):
     """Create a level 4 product by abutting single grating products
 
     Parameters
@@ -45,7 +45,7 @@ def create_level4_products(productlist, productdict):
         The abutted product
 
     """
-    used_gratings_list = get_used_gratings(productlist)
+    used_gratings_list = get_used_gratings(productlist, grating_table)
     ngratings = len(used_gratings_list)
     if ngratings == 1:
         print("No need to make abutted product as only 1 grating")
@@ -113,7 +113,7 @@ def create_level4_products(productlist, productdict):
     return abutted_product
 
 
-def get_used_gratings(productlist):
+def get_used_gratings(productlist, grating_table):
     """Get the list of used gratings from the product list and return that list
     sorted by grating priority
 
@@ -138,8 +138,8 @@ def get_used_gratings(productlist):
     used_gratings_list = []
     for product in productlist:
         setting = product.instrument + '/' + product.grating
-        if setting in GRATING_PRIORITIES:
-            grating_dict = GRATING_PRIORITIES[setting]
+        if setting in grating_table:
+            grating_dict = grating_table[setting]
             grating_dict['name'] = setting
             used_gratings_list.append(grating_dict)
     used_gratings_list = sorted(used_gratings_list, key=lambda grating: grating['priority'])
