@@ -267,7 +267,9 @@ def abut(product_short, product_long, transition_wavelength):
         if product_long.instrument in product_short.instrument:
             product_abutted.instrument = product_short.instrument
         else:
-            product_abutted.instrument = product_short.instrument + '-' + product_long.instrument
+            temp_instrument_list = [product_short.instrument, product_long.instrument]
+            temp_instrument_list.sort()
+            product_abutted.instrument = '-'.join(temp_instrument_list)
         target_matched = False
         if product_short.target == product_long.target:
             product_abutted.target = product_short.target
