@@ -65,7 +65,7 @@ class TestWrapper():
         fitsdiff_report = ''
         keywords_to_ignore = ['DATE', 'FITS_SW', 'FILENAME',
                               'HLSP_VER', 'S_REGION']
-        new_hlsps = glob.glob(program + '/input/hst_')
+        new_hlsps = glob.glob(program + '/input/hst_*')
         for new_product in new_hlsps:
             truth_filename = self.get_truth_filename(program, new_product)
             fdiff = FITSDiff(new_product, truth_filename,

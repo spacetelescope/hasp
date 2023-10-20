@@ -10,6 +10,8 @@ import astropy
 from astropy.io import fits
 from astropy.time import Time
 
+import hasp
+
 from ullyses.coadd import COSSegmentList, STISSegmentList, CCDSegmentList
 from ullyses.coadd import SegmentList, Segment
 
@@ -198,7 +200,7 @@ class HASP_SegmentList(SegmentList):
 
         # set up the header
         hdr1 = fits.Header()
-        hdr1['EXTNAME'] = ('SCIENCE', 'Spectrum science arrays')
+        hdr1['EXTNAME'] = ('SCI', 'Spectrum science arrays')
         hdr1['TIMESYS'] = ('UTC', 'Time system in use')
         hdr1['TIMEUNIT'] = ('s', 'Time unit for durations')
         hdr1['TREFPOS'] = ('GEOCENTER', 'Time reference position')
@@ -215,6 +217,7 @@ class HASP_SegmentList(SegmentList):
         hdr1['MJD-BEG'] = (mjd_beg, 'MJD of first exposure start')
         hdr1['MJD-END'] = (mjd_end, 'MJD of last exposure end')
         hdr1['XPOSURE'] = (self.combine_keys("exptime", "sum"), '[s] Sum of exposure durations')
+        hdr1['S_REGION'] = (self.obs_footprint(), 'Region footprint')
 
         # set up the table columns
         nelements = len(self.output_wavelength)
@@ -263,7 +266,6 @@ class HASP_SegmentList(SegmentList):
         hdr0['CENWAVE'] = (self.combine_keys("cenwave", "multi"), 'Central wavelength setting for disperser')
         hdr0['SPORDER'] = (1, 'Spectral order')
         hdr0['APERTURE'] = (','.join(self.aperturelist), 'Identifier(s) of entrance aperture')
-        hdr0['S_REGION'] = (self.obs_footprint(), 'Region footprint')
         hdr0['OBSMODE'] = (self.combine_keys("obsmode", "multi"), 'Instrument operating mode (ACCUM | TIME-TAG)')
         hdr0['TARGNAME'] = self.target
         hdr0.add_blank(after='OBSMODE')
@@ -512,6 +514,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     # (target, instrument, grating, detector, visit)
     # For single program products, the mode is
     # (target, instrument, grating, detector)
+    print(f'HASP version {hasp.__version__}')
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
