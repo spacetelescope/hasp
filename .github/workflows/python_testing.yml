@@ -62,5 +62,6 @@ jobs:
       run: |
         # run all the unit tests.
         pip install .['test']
+        pip install 'ullyses @ git+https://github.com/spacetelescope/ullyses.git'
         pytest tests/test_swrapper.py -v 
       working-directory: ${{env.working-directory}}

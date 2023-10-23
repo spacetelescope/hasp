@@ -13,8 +13,6 @@ classifiers = [
 ]
 dependencies = [
     'astropy >=5.0.4',
-    'ullyses >= 2.0.11',
-    'ullyses-utils >= 2.1.2',
 ]
 dynamic = ['version']
 
