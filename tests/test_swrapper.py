@@ -13,6 +13,9 @@ Program_10033 = {'name': '10033',
                  'url': 'https://stsci.box.com/shared/static/wnmma331eixblioo5jfnmjnzz2fjt01r.gz'}
 Program_11839 = {'name': '11839',
                  'url': 'https://stsci.box.com/shared/static/a05mixac3hreg6g07f1kkogcpphdo26a.gz'}
+Program_13471 = {'name': '13471',
+                 'url': 'https://stsci.box.com/shared/static/jac75olate8hjalvc3tgor1fuvxupiqm.gz'}
+
 HD104237E = {'name': 'hd-104237e',
              'url': 'https://stsci.box.com/shared/static/irelgbjs7zhdiljksao4su2c6tfhyntx.gz'}
 V_HK_ORI = {'name': 'v-hk-ori',
@@ -40,6 +43,17 @@ class TestWrapper():
         if report is not None:
             raise AssertionError(report)
         return
+    
+    def test_13471(self):
+        program = Program_13471
+        self.setup_tree(program)
+        self.run_wrapper(program['name'])
+        report = self.compare_outputs(program['name'])
+        self.cleanup(program['name'])
+        if report is not None:
+            raise AssertionError(report)
+        return
+
 
     def setup_tree(self, program):
         program_name = program['name']
