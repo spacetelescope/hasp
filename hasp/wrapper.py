@@ -42,9 +42,9 @@ class HASP_SegmentList(SegmentList):
 
     """
 
-    def __init__(self, grating, path='./'):
+    def __init__(self, instrument, grating, inpath='./', infiles=None):
         self.bad_echelle_orders = []
-        super().__init__(grating, path)
+        super().__init__(instrument, grating, inpath, infiles=None)
 
     def import_data(self, file_list):
         """This is used if the __init__ function is called with instrument
@@ -621,12 +621,12 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                     print('Importing files {}'.format(files_to_import))
                     # this instantiates the class
                     if instrument == 'COS':
-                        prod = HASP_COSSegmentList(None, path=indir)
+                        prod = HASP_COSSegmentList(None, inpath=indir)
                     elif instrument == 'STIS':
                         if detector == 'CCD':
-                            prod = HASP_CCDSegmentList(None, path=indir)
+                            prod = HASP_CCDSegmentList(None, inpath=indir)
                         else:
-                            prod = HASP_STISSegmentList(None, path=indir)
+                            prod = HASP_STISSegmentList(None, inpath=indir)
                     else:
                         print(f'Unknown mode [{instrument}, {grating}, {detector}]')
                         continue
@@ -733,12 +733,12 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                     print('Importing files {}'.format(files_to_import))
                     # this instantiates the class
                     if instrument == 'COS':
-                        prod = HASP_COSSegmentList(None, path=indir)
+                        prod = HASP_COSSegmentList(None, inpath=indir)
                     elif instrument == 'STIS':
                         if detector == 'CCD':
-                            prod = HASP_CCDSegmentList(None, path=indir)
+                            prod = HASP_CCDSegmentList(None, inpath=indir)
                         else:
-                            prod = HASP_STISSegmentList(None, path=indir)
+                            prod = HASP_STISSegmentList(None, inpath=indir)
                     else:
                         print(f'Unknown mode [{instrument}, {grating}, {detector}]')
                         continue
