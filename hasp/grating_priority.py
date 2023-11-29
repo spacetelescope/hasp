@@ -47,9 +47,6 @@ def create_level4_products(productlist, productdict, grating_table=GRATING_PRIOR
     """
     used_gratings_list = get_used_gratings(productlist, grating_table)
     ngratings = len(used_gratings_list)
-    if ngratings == 1:
-        print("No need to make abutted product as only 1 grating")
-        return None
     if ngratings == 0:
         print('No valid input grating products')
         return None

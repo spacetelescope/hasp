@@ -674,12 +674,15 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 products[setting] = prod
                 productdict[setting] = prod
 
-            abutted_product = create_level4_products(productlist, productdict)
-            if abutted_product is not None:
-                filename = create_output_file_name(abutted_product, producttype)
-                filename = os.path.join(outdir, filename)
-                abutted_product.write(filename, clobber, level=2)
-                print(f"   Wrote {filename}")
+            if len(productlist) > 1:
+                abutted_product = create_level4_products(productlist, productdict)
+                if abutted_product is not None:
+                    filename = create_output_file_name(abutted_product, producttype)
+                    filename = os.path.join(outdir, filename)
+                    abutted_product.write(filename, clobber, level=2)
+                    print(f"   Wrote {filename}")
+            else:
+                print('No need to create abutted product as < 2 single grating products')
 
     print('Looping over proposals')
     producttype = 'proposal'
