@@ -352,5 +352,5 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.num_exp = product_long.num_exp
     else:
         product_abutted = None
-    product_abutted.targ_ra, product_abutted.targ_dec = product_abutted.get_coords()
+    product_abutted.targ_ra, product_abutted.targ_dec, product_abutted.epoch = product_abutted.get_coords()
     return product_abutted

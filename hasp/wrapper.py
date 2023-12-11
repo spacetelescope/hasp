@@ -1,6 +1,7 @@
 from collections import defaultdict
 import argparse
 import os
+import re
 import glob
 import datetime
 from datetime import datetime as dt
@@ -26,6 +27,8 @@ PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTF
               'COSBOA']
 
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
+
+COORD_EPOCH = 2016.0
 
 '''
 This wrapper goes through each file in the selected directory ('indir') and
@@ -194,7 +197,7 @@ class HASP_SegmentList(SegmentList):
                 print(f'{filename} already exists and overwrite=False, skipping write')
                 return
         self.target = self.get_targname()
-        self.targ_ra, self.targ_dec = self.get_coords()
+        self.targ_ra, self.targ_dec, self.epoch = self.get_coords()
 
         # Table 1 - HLSP data
 
@@ -272,8 +275,8 @@ class HASP_SegmentList(SegmentList):
         hdr0.add_blank('              / TARGET INFORMATION', before='TARGNAME')
 
         hdr0['RADESYS'] = ('ICRS ', 'World coordinate reference frame')
-        hdr0['TARG_RA'] = (self.targ_ra, '[deg] Target right ascension')
-        hdr0['TARG_DEC'] = (self.targ_dec, '[deg] Target declination')
+        hdr0['TARG_RA'] = (self.targ_ra, '[deg] Target right ascension from proposal')
+        hdr0['TARG_DEC'] = (self.targ_dec, '[deg] Target declination from proposal')
         hdr0['PROPOSID'] = (self.combine_keys("proposid", "multi"), 'Program identifier')
         hdr0['PINAME'] = (self.combine_keys("pr_inv_l", "max"), "Principal Investigator")
         hdr0['MTFLAG'] = (self.combine_keys("mtflag", "multi"), 'Moving Target Flag')
@@ -342,7 +345,7 @@ class HASP_SegmentList(SegmentList):
     def obs_footprint(self):
         # Not using WCS at the moment
         # This is a placeholder, need to figure out polygon
-        self.targ_ra, self.targ_dec = self.get_coords()
+        self.targ_ra, self.targ_dec, self.epoch = self.get_coords()
         radius = (2.5 / 2 / 3600)
         center_ra = self.targ_ra
         center_dec = self.targ_dec
@@ -424,6 +427,14 @@ class HASP_SegmentList(SegmentList):
             return np.sum(vals)
         elif method == "arr":
             return np.array(vals)
+
+    def get_coords(self):
+        # For visit and proposal level products, there's only 1
+        # set of coordinates
+        hdr = self.primary_headers[0]
+        ra = hdr['ra_targ']
+        dec = hdr['dec_targ']
+        return ra, dec, COORD_EPOCH
 
     def calculate_statistics(self, verbose=False):
         """Calcuate statistics for each of the exposures that
@@ -515,6 +526,11 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     # For single program products, the mode is
     # (target, instrument, grating, detector)
     print(f'HASP version {hasp.__version__}')
+    try:
+        import ullyses
+        print(f'Ullyses version {ullyses.__version__}')
+    except:
+        print('Ullyses version unavailable')
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
@@ -633,7 +649,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                     if prod is not None:
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
-                    prod.targ_ra, prod.targ_dec = prod.get_coords()
+                    prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
                     prod.disambiguated_grating = grating.lower()
@@ -662,7 +678,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 if no_good_data:
                     break
                 prod.target = prod.get_targname()
-                prod.targ_ra, prod.targ_dec = prod.get_coords()
+                prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                 target = prod.target.lower()
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
@@ -748,7 +764,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                     if prod is not None:
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
-                    prod.targ_ra, prod.targ_dec = prod.get_coords()
+                    prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
                     prod.disambiguated_grating = grating.lower()
@@ -775,7 +791,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 if no_good_data:
                     break
                 prod.target = prod.get_targname()
-                prod.targ_ra, prod.targ_dec = prod.get_coords()
+                prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                 target = prod.target.lower()
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
@@ -1055,6 +1071,21 @@ def sanitize_targname(target_name):
     new_target_name = new_target_name.replace('+', 'p')
     new_target_name = new_target_name.replace('_', '-')
     return new_target_name
+
+def parse_epoch(epoch_string):
+    epoch_list = re.findall(r"[-+]?(?:\d*\.*\d+)", epoch_string)
+    if len(epoch_list) > 1:
+        print(f'Epoch string {epoch_string} parses to more than 1 floating-point value')
+        return None
+    elif len(epoch_list) == 0:
+        return None
+    else:
+        epoch_float = float(epoch_list[0])
+        if epoch_float < 1850.0 or epoch_float > 2100.0:
+            print(f'Unreasonable value for parsed epoch: {epoch_float}')
+            return None
+        else:
+            return epoch_float
 
 
 def call_main():

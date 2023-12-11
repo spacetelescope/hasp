@@ -37,7 +37,9 @@ jobs:
             toxenv: py39
             
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+      with:
+        fetch-tags: true
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -62,6 +64,5 @@ jobs:
       run: |
         # run all the unit tests.
         pip install .['test']
-        pip install 'ullyses @ git+https://github.com/spacetelescope/ullyses.git'
         pytest tests/test_swrapper.py -v 
       working-directory: ${{env.working-directory}}
