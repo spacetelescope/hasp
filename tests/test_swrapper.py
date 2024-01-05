@@ -83,7 +83,6 @@ class TestWrapper():
         for new_product in new_hlsps:
             truth_filename = self.get_truth_filename(program, new_product)
             fdiff = FITSDiff(new_product, truth_filename,
-                             ignore_hdus=['provenance'],
                              ignore_keywords=keywords_to_ignore,
                              rtol=1.0e-7)
             fitsdiff_report += fdiff.report()

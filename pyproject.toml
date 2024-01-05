@@ -30,8 +30,6 @@ test = [
     'psutil',
     'pytest >=4.6.0',
     'pytest-cov',
-    'pytest-doctestplus',
-    'pytest-openfiles >=0.5.0',
 ]
 opencv = [
     'opencv-python >=4.6.0.66',
@@ -60,10 +58,6 @@ zip-safe = true
 
 [tool.pytest.ini_options]
 minversion = 4.6
-doctest_plus = true
-doctest_rst = true
-text_file_format = 'rst'
-addopts = '--open-files'
 
 [tool.ruff]
 line-length = 110
