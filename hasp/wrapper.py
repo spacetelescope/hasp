@@ -196,7 +196,6 @@ class HASP_SegmentList(SegmentList):
             if os.path.exists(filename):
                 print(f'{filename} already exists and overwrite=False, skipping write')
                 return
-        self.target = self.get_targname()
         self.targ_ra, self.targ_dec, self.epoch = self.get_coords()
 
         # Table 1 - HLSP data
@@ -275,8 +274,8 @@ class HASP_SegmentList(SegmentList):
         hdr0.add_blank('              / TARGET INFORMATION', before='TARGNAME')
 
         hdr0['RADESYS'] = ('ICRS ', 'World coordinate reference frame')
-        hdr0['TARG_RA'] = (self.targ_ra, '[deg] Target right ascension from proposal')
-        hdr0['TARG_DEC'] = (self.targ_dec, '[deg] Target declination from proposal')
+        hdr0['TARG_RA'] = (self.targ_ra, '[deg] Target right ascension')
+        hdr0['TARG_DEC'] = (self.targ_dec, '[deg] Target declination')
         hdr0['PROPOSID'] = (self.combine_keys("proposid", "multi"), 'Program identifier')
         hdr0['PINAME'] = (self.combine_keys("pr_inv_l", "max"), "Principal Investigator")
         hdr0['MTFLAG'] = (self.combine_keys("mtflag", "multi"), 'Moving Target Flag')
@@ -427,14 +426,6 @@ class HASP_SegmentList(SegmentList):
             return np.sum(vals)
         elif method == "arr":
             return np.array(vals)
-
-    def get_coords(self):
-        # For visit and proposal level products, there's only 1
-        # set of coordinates
-        hdr = self.primary_headers[0]
-        ra = hdr['ra_targ']
-        dec = hdr['dec_targ']
-        return ra, dec, COORD_EPOCH
 
     def calculate_statistics(self, verbose=False):
         """Calcuate statistics for each of the exposures that
@@ -648,7 +639,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                         continue
                     if prod is not None:
                         prod.import_data(files_to_import)
-                    prod.target = prod.get_targname()
+                    prod.target = target
                     prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
@@ -677,9 +668,8 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 # If making HLSPs for a DR, put them in the official folder
                 if no_good_data:
                     break
-                prod.target = prod.get_targname()
+                prod.target = target
                 prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
-                target = prod.target.lower()
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
                 outname = create_output_file_name(prod, producttype)
@@ -763,7 +753,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                         continue
                     if prod is not None:
                         prod.import_data(files_to_import)
-                    prod.target = prod.get_targname()
+                    prod.target = target
                     prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
@@ -790,9 +780,8 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                     # If making HLSPs for a DR, put them in the official folder
                 if no_good_data:
                     break
-                prod.target = prod.get_targname()
+                prod.target = target
                 prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
-                target = prod.target.lower()
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
                 outname = create_output_file_name(prod, producttype)

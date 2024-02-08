@@ -202,8 +202,9 @@ def abut(product_short, product_long, transition_wavelength):
         if transition_wavelength == "bad":
             return None
         # Make sure the grating doesn't appear more than once in the filename
-        if product_long.grating not in product_short.gratinglist:
-            product_short.gratinglist.append(product_long.grating)
+        output_gratinglist = product_short.gratinglist.copy()
+        if product_long.grating not in output_gratinglist:
+            output_gratinglist.append(product_long.grating)
             output_grating = product_short.grating + '-' + product_long.disambiguated_grating
         else:
             output_grating = product_short.grating
@@ -249,7 +250,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.first_headers = product_short.first_headers + product_long.first_headers
         product_abutted.grating = output_grating
         product_abutted.disambiguated_grating = output_grating
-        product_abutted.gratinglist = product_short.gratinglist
+        product_abutted.gratinglist = output_gratinglist
         product_abutted.aperturelist = list(set(product_short.aperturelist + product_long.aperturelist))
         product_abutted.aperturelist.sort()
         if product_long.instrument not in product_short.instrumentlist:
@@ -257,8 +258,8 @@ def abut(product_short, product_long, transition_wavelength):
         else:
             product_abutted.instrumentlist = product_short.instrumentlist 
         product_abutted.instrumentlist = product_short.instrumentlist
-        product_short.target = product_short.get_targname()
-        product_long.target = product_long.get_targname()
+#        product_short.target = product_short.get_targname()
+#        product_long.target = product_long.get_targname()
         if product_short.instrument in product_long.instrument:
             product_abutted.instrument = product_long.instrument
         if product_long.instrument in product_short.instrument:
@@ -275,7 +276,7 @@ def abut(product_short, product_long, transition_wavelength):
         else:
             for target_name in product_short.targnames:
                 if target_name in product_long.targnames:
-                    product_abutted.target = product_abutted.get_targname()
+                    product_abutted.target = target_name
                     target_matched = True
                     product_abutted.targnames = [target_name]
         if not target_matched:
