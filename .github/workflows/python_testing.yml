@@ -58,7 +58,5 @@ jobs:
     - name: Test with pytest
       run: |
         # run all the unit tests.
-        pip install hasp==0.9.5
-        pip install git+https://github.com/spacetelescope/ullyses.git@cb81d444e881d0fb37ccc53f3e49d4fc52c1ba5b
         pytest tests/test_swrapper.py -v 
       working-directory: ${{env.working-directory}}
