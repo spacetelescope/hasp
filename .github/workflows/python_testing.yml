@@ -58,5 +58,6 @@ jobs:
     - name: Test with pytest
       run: |
         # run all the unit tests.
+        pip install .['test']
         pytest tests/test_swrapper.py -v 
       working-directory: ${{env.working-directory}}
