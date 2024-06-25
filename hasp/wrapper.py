@@ -10,6 +10,8 @@ import astropy
 from astropy.io import fits
 from astropy.time import Time
 
+import hasp
+
 from ullyses.coadd import COSSegmentList, STISSegmentList, CCDSegmentList
 from ullyses.coadd import SegmentList, Segment
 
@@ -24,6 +26,8 @@ PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTF
               'COSBOA']
 
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
+
+COORD_EPOCH = 2016.0
 
 '''
 This wrapper goes through each file in the selected directory ('indir') and
@@ -40,9 +44,9 @@ class HASP_SegmentList(SegmentList):
 
     """
 
-    def __init__(self, grating, path='./'):
+    def __init__(self, instrument, grating, inpath='./', infiles=None):
         self.bad_echelle_orders = []
-        super().__init__(grating, path)
+        super().__init__(instrument, grating, inpath, infiles=None)
 
     def import_data(self, file_list):
         """This is used if the __init__ function is called with instrument
@@ -163,7 +167,7 @@ class HASP_SegmentList(SegmentList):
 
     def write(self, filename, overwrite=False, level=""):
         """Write a product to disk
-        aq
+
         Parameters
         ----------
         filename : str
@@ -191,8 +195,7 @@ class HASP_SegmentList(SegmentList):
             if os.path.exists(filename):
                 print(f'{filename} already exists and overwrite=False, skipping write')
                 return
-        self.target = self.get_targname()
-        self.targ_ra, self.targ_dec = self.get_coords()
+        self.targ_ra, self.targ_dec, self.epoch = self.get_coords()
 
         # Table 1 - HLSP data
 
@@ -215,6 +218,7 @@ class HASP_SegmentList(SegmentList):
         hdr1['MJD-BEG'] = (mjd_beg, 'MJD of first exposure start')
         hdr1['MJD-END'] = (mjd_end, 'MJD of last exposure end')
         hdr1['XPOSURE'] = (self.combine_keys("exptime", "sum"), '[s] Sum of exposure durations')
+        hdr1['S_REGION'] = (self.obs_footprint(), 'Region footprint')
 
         # set up the table columns
         nelements = len(self.output_wavelength)
@@ -263,7 +267,6 @@ class HASP_SegmentList(SegmentList):
         hdr0['CENWAVE'] = (self.combine_keys("cenwave", "multi"), 'Central wavelength setting for disperser')
         hdr0['SPORDER'] = (1, 'Spectral order')
         hdr0['APERTURE'] = (','.join(self.aperturelist), 'Identifier(s) of entrance aperture')
-        hdr0['S_REGION'] = (self.obs_footprint(), 'Region footprint')
         hdr0['OBSMODE'] = (self.combine_keys("obsmode", "multi"), 'Instrument operating mode (ACCUM | TIME-TAG)')
         hdr0['TARGNAME'] = self.target
         hdr0.add_blank(after='OBSMODE')
@@ -340,7 +343,7 @@ class HASP_SegmentList(SegmentList):
     def obs_footprint(self):
         # Not using WCS at the moment
         # This is a placeholder, need to figure out polygon
-        self.targ_ra, self.targ_dec = self.get_coords()
+        self.targ_ra, self.targ_dec, self.epoch = self.get_coords()
         radius = (2.5 / 2 / 3600)
         center_ra = self.targ_ra
         center_dec = self.targ_dec
@@ -512,6 +515,12 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     # (target, instrument, grating, detector, visit)
     # For single program products, the mode is
     # (target, instrument, grating, detector)
+    print(f'HASP version {hasp.__version__}')
+    try:
+        import ullyses
+        print(f'Ullyses version {ullyses.__version__}')
+    except:
+        print('Ullyses version unavailable')
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
@@ -638,19 +647,19 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                     print('Importing files {}'.format(files_to_import))
                     # this instantiates the class
                     if instrument == 'COS':
-                        prod = HASP_COSSegmentList(None, path=indir)
+                        prod = HASP_COSSegmentList(None, inpath=indir)
                     elif instrument == 'STIS':
                         if detector == 'CCD':
-                            prod = HASP_CCDSegmentList(None, path=indir)
+                            prod = HASP_CCDSegmentList(None, inpath=indir)
                         else:
-                            prod = HASP_STISSegmentList(None, path=indir)
+                            prod = HASP_STISSegmentList(None, inpath=indir)
                     else:
                         print(f'Unknown mode [{instrument}, {grating}, {detector}]')
                         continue
                     if prod is not None:
                         prod.import_data(files_to_import)
                     prod.target = prod.get_targname()
-                    prod.targ_ra, prod.targ_dec = prod.get_coords()
+                    prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
                     prod.disambiguated_grating = grating.lower()
@@ -679,7 +688,7 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 if no_good_data:
                     break
                 prod.target = prod.get_targname()
-                prod.targ_ra, prod.targ_dec = prod.get_coords()
+                prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                 target = prod.target.lower()
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
@@ -732,19 +741,19 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
             print('Importing files {}'.format(files_to_import))
             # this instantiates the class
             if instrument == 'COS':
-                prod = HASP_COSSegmentList(None, path=indir)
+                prod = HASP_COSSegmentList(None, inpath=indir)
             elif instrument == 'STIS':
                 if detector == 'CCD':
-                    prod = HASP_CCDSegmentList(None, path=indir)
+                    prod = HASP_CCDSegmentList(None, inpath=indir)
                 else:
-                    prod = HASP_STISSegmentList(None, path=indir)
+                    prod = HASP_STISSegmentList(None, inpath=indir)
             else:
                 print(f'Unknown mode [{instrument}, {grating}, {detector}]')
                 continue
             if prod is not None:
                 prod.import_data(files_to_import)
             prod.target = target_name
-            prod.targ_ra, prod.targ_dec = prod.get_coords()
+            prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
             prod.snrmax = snrmax
             prod.gratinglist = [grating]
             prod.disambiguated_grating = grating.lower()
@@ -772,7 +781,7 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
         # If making HLSPs for a DR, put them in the official folder
         if no_good_data:
             break
-        prod.targ_ra, prod.targ_dec = prod.get_coords()
+        prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
         if not os.path.exists(outdir):
             os.makedirs(outdir)
         outname = create_output_file_name(prod, product_type)
