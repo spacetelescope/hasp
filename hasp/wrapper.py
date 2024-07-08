@@ -201,7 +201,7 @@ class HASP_SegmentList(SegmentList):
 
         # set up the header
         hdr1 = fits.Header()
-        hdr1['EXTNAME'] = ('SCIENCE', 'Spectrum science arrays')
+        hdr1['EXTNAME'] = ('SCI', 'Spectrum science arrays')
         hdr1['TIMESYS'] = ('UTC', 'Time system in use')
         hdr1['TIMEUNIT'] = ('s', 'Time unit for durations')
         hdr1['TREFPOS'] = ('GEOCENTER', 'Time reference position')
@@ -694,7 +694,9 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                     os.makedirs(outdir)
                 outname = create_output_file_name(prod, product_type)
                 outname = os.path.join(outdir, outname)
-                prod.write(outname, clobber, level=1)
+                level = 1
+                if product_type == 'proposal': level = 3
+                prod.write(outname, clobber, level=level)
                 print(f"   Wrote {outname}")
                 productlist.append(prod)
                 products[setting] = prod
@@ -704,7 +706,9 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
             if abutted_product is not None:
                 filename = create_output_file_name(abutted_product, product_type)
                 filename = os.path.join(outdir, filename)
-                abutted_product.write(filename, clobber, level=2)
+                level = 2
+                if product_type == 'proposal': level = 4
+                abutted_product.write(filename, clobber, level=level)
                 print(f"   Wrote {filename}")
     return
 
