@@ -800,7 +800,7 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
     if abutted_product is not None:
         filename = create_output_file_name(abutted_product, product_type)
         filename = os.path.join(outdir, filename)
-        abutted_product.write(filename, clobber, level=2)
+        abutted_product.write(filename, clobber, level=5)
         print(f"   Wrote {filename}")
     return
 

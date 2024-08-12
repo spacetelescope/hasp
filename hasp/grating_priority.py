@@ -24,7 +24,7 @@ GRATING_PRIORITIES = {'STIS/E140M': {'minwave': 1141.6, 'maxwave': 1727.2, 'prio
                       }
 
 
-def create_level4_products(productlist, productdict):
+def create_level4_products(productlist, productdict, grating_table=GRATING_PRIORITIES):
     """Create a level 4 product by abutting single grating products
 
     Parameters
