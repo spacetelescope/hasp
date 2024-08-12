@@ -1,6 +1,7 @@
 from collections import defaultdict
 import argparse
 import os
+import re
 import glob
 import datetime
 from datetime import datetime as dt
@@ -1067,6 +1068,21 @@ def sanitize_targname(target_name):
     new_target_name = new_target_name.replace('+', 'p')
     new_target_name = new_target_name.replace('_', '-')
     return new_target_name
+
+def parse_epoch(epoch_string):
+    epoch_list = re.findall(r"[-+]?(?:\d*\.*\d+)", epoch_string)
+    if len(epoch_list) > 1:
+        print(f'Epoch string {epoch_string} parses to more than 1 floating-point value')
+        return None
+    elif len(epoch_list) == 0:
+        return None
+    else:
+        epoch_float = float(epoch_list[0])
+        if epoch_float < 1850.0 or epoch_float > 2100.0:
+            print(f'Unreasonable value for parsed epoch: {epoch_float}')
+            return None
+        else:
+            return epoch_float
 
 
 def call_main():

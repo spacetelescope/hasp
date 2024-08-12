@@ -13,8 +13,7 @@ classifiers = [
 ]
 dependencies = [
     'astropy >=5.0.4',
-    'ullyses@git+https://github.com/spacetelescope/ullyses',
-    'ullyses-utils@git+https://github.com/spacetelescope/ullyses-utils',
+    'ullyses >= 4.1.0',
 ]
 dynamic = ['version']
 
@@ -31,8 +30,6 @@ test = [
     'psutil',
     'pytest >=4.6.0',
     'pytest-cov',
-    'pytest-doctestplus',
-    'pytest-openfiles >=0.5.0',
 ]
 opencv = [
     'opencv-python >=4.6.0.66',
@@ -61,10 +58,6 @@ zip-safe = true
 
 [tool.pytest.ini_options]
 minversion = 4.6
-doctest_plus = true
-doctest_rst = true
-text_file_format = 'rst'
-addopts = '--open-files'
 
 [tool.ruff]
 line-length = 110
