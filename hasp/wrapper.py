@@ -168,7 +168,7 @@ class HASP_SegmentList(SegmentList):
 
     def write(self, filename, overwrite=False, level=""):
         """Write a product to disk
-        aq
+
         Parameters
         ----------
         filename : str
@@ -510,7 +510,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False):
+def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False, cross_program=False):
     # Find out which unique modes are present
     # For single visit products, a unique mode is
     # (target, instrument, grating, detector, visit)
@@ -525,11 +525,13 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
+    uniqsingletargetmodes = []
     targetlist = []
     visitlist = []
     proposallist = []
     visitdict = {}
     proposaldict = {}
+    singletargetdict = {}
     spec1d = glob.glob(os.path.join(indir, '*_x1d.fits')) + glob.glob(os.path.join(indir, '*_sx1.fits'))
     spec1d.sort()
     if no_keyword_filtering:
@@ -558,6 +560,9 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
             targetlist.append(targname)
         if obsmode not in uniqmodes:
             uniqmodes.append(obsmode)
+            singletargetdict[obsmode] = [myfile]
+        else:
+            singletargetdict[obsmode].append(myfile)
         if visitmode not in uniqvisitmodes:
             uniqvisitmodes.append(visitmode)
             visitdict[visitmode] = [myfile]
@@ -578,31 +583,43 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     visitlist.sort()
     proposallist.sort()
 
-    print('Looping over visits')
-    producttype = 'visit'
-    for visit in visitlist:
-        print('Processing product {}'.format(visit))
-        thisvisitkeys = []
-        for visitspec in visitdict.keys():
-            if visitspec[4] == visit:
-                thisvisitkeys.append(visitspec)
-        targetsinthisvisit = []
-        for visitspec in thisvisitkeys:
-            thistarget = visitspec[3]
-            if thistarget not in targetsinthisvisit:
-                targetsinthisvisit.append(thistarget)
-        print('Targets in visit {}: {}'.format(visit, targetsinthisvisit))
+    
+    if cross_program:
+        create_cross_program_products('cross-program', uniqmodes, singletargetdict, indir, 
+                                      snrmax, threshold, outdir, clobber, keyword_filters)
+    else:
+        create_products('visit', visitlist, visitdict, indir, snrmax, threshold, outdir,
+                        clobber, keyword_filters)
+        create_products('proposal', proposallist, proposaldict, indir, snrmax, threshold,
+                        outdir, clobber, keyword_filters)
 
-        for target in targetsinthisvisit:
-            print('Processing target {} in visit {}'.format(target, visit))
+
+def create_products(product_type, product_type_list, product_type_dict, indir, snrmax,
+                    threshold, outdir, clobber, keyword_filters):
+    print(f'Looping over {product_type}s')
+    for prod_type in product_type_list:
+        print('Processing product {}'.format(prod_type))
+        thisprodkeys = []
+        for prodspec in product_type_dict.keys():
+            if prodspec[4] == prod_type:
+                thisprodkeys.append(prodspec)
+        targetsinthisprod = []
+        for prodspec in thisprodkeys:
+            thistarget = prodspec[3]
+            if thistarget not in targetsinthisprod:
+                targetsinthisprod.append(thistarget)
+        print('Targets in {} {}: {}'.format(product_type, prod_type, targetsinthisprod))
+
+        for target in targetsinthisprod:
+            print('Processing target {} in {} {}'.format(target, product_type, prod_type))
             if target in INTERNAL_TARGETS:
                 print('{} is an internal target and will not be processed'.format(target))
                 continue
-            thisvisitandtargetspec = []
-            for visitspec in thisvisitkeys:
-                thistarget = visitspec[3]
+            thisprodandtargetspec = []
+            for prodspec in thisprodkeys:
+                thistarget = prodspec[3]
                 if target == thistarget:
-                    thisvisitandtargetspec.append(visitspec)
+                    thisprodandtargetspec.append(prodspec)
 
             # Create dictionary of all products, with each set to None by default
             products = defaultdict(lambda: None)
@@ -610,7 +627,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
             productdict = {}
             uniqmodes = []
             no_good_data = False
-            for uniqmode in thisvisitandtargetspec:
+            for uniqmode in thisprodandtargetspec:
                 instrument = uniqmode[0]
                 grating = uniqmode[1]
                 detector = uniqmode[2]
@@ -618,7 +635,10 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 print('Processing grating {}'.format(setting))
                 if (instrument, grating, detector) not in uniqmodes:
                     uniqmodes.append((instrument, grating, detector))
-                files_to_import = visitdict[uniqmode]
+                files_to_import = product_type_dict[uniqmode]
+                if product_type == 'proposal':
+                    if 'MOVINGTARGET' in keyword_filters:
+                        files_to_import = check_for_moving_targets(files_to_import)
                 # Flux based filtering loop
                 while True:
                     if len(files_to_import) == 0:
@@ -639,7 +659,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                         continue
                     if prod is not None:
                         prod.import_data(files_to_import)
-                    prod.target = target
+                    prod.target = prod.get_targname()
                     prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
@@ -668,136 +688,122 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                 # If making HLSPs for a DR, put them in the official folder
                 if no_good_data:
                     break
-                prod.target = target
+                prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
+                target = prod.target.lower()
                 if not os.path.exists(outdir):
                     os.makedirs(outdir)
-                outname = create_output_file_name(prod, producttype)
+                outname = create_output_file_name(prod, product_type)
                 outname = os.path.join(outdir, outname)
-                prod.write(outname, clobber, level=1)
+                level = 1
+                if product_type == 'proposal': level = 3
+                prod.write(outname, clobber, level=level)
                 print(f"   Wrote {outname}")
                 productlist.append(prod)
                 products[setting] = prod
                 productdict[setting] = prod
 
-            if len(productlist) > 1:
-                abutted_product = create_level4_products(productlist, productdict)
-                if abutted_product is not None:
-                    filename = create_output_file_name(abutted_product, producttype)
-                    filename = os.path.join(outdir, filename)
-                    abutted_product.write(filename, clobber, level=2)
-                    print(f"   Wrote {filename}")
-            else:
-                print('No need to create abutted product as < 2 single grating products')
-
-    print('Looping over proposals')
-    producttype = 'proposal'
-    for proposal in proposallist:
-        print('Processing product {}'.format(proposal))
-        thisproposalkeys = []
-        for proposalspec in proposaldict.keys():
-            if proposalspec[4] == proposal:
-                thisproposalkeys.append(proposalspec)
-        targetsinthisproposal = []
-        for proposalspec in thisproposalkeys:
-            thistarget = proposalspec[3]
-            if thistarget not in targetsinthisproposal:
-                targetsinthisproposal.append(thistarget)
-        print('Targets in proposal {}: {}'.format(proposal, targetsinthisproposal))
-
-        for target in targetsinthisproposal:
-            print('Processing target {} in proposal {}'.format(target, proposal))
-            if target in INTERNAL_TARGETS:
-                print('{} is an internal target and will not be processed'.format(target))
-                continue
-            thisproposalandtargetspec = []
-            for proposalspec in thisproposalkeys:
-                thistarget = proposalspec[3]
-                if target == thistarget:
-                    thisproposalandtargetspec.append(proposalspec)
-
-            # Create dictionary of all products, with each set to None by default
-            products = defaultdict(lambda: None)
-            productlist = []
-            productdict = {}
-            uniqmodes = []
-            no_good_data = False
-            for uniqmode in thisproposalandtargetspec:
-                instrument = uniqmode[0]
-                grating = uniqmode[1]
-                detector = uniqmode[2]
-                setting = instrument + '/' + grating
-                print(f'Processing grating {setting}')
-                if (instrument, grating, detector) not in uniqmodes:
-                    uniqmodes.append((instrument, grating, detector))
-                files_to_import = proposaldict[uniqmode]
-                if 'MOVINGTARGET' in keyword_filters:
-                    files_to_import = check_for_moving_targets(files_to_import)
-                # Flux filtering loop
-                while True:
-                    if len(files_to_import) == 0:
-                        print('No suitable files for this product')
-                        no_good_data = True
-                        break
-                    print('Importing files {}'.format(files_to_import))
-                    # this instantiates the class
-                    if instrument == 'COS':
-                        prod = HASP_COSSegmentList(None, inpath=indir)
-                    elif instrument == 'STIS':
-                        if detector == 'CCD':
-                            prod = HASP_CCDSegmentList(None, inpath=indir)
-                        else:
-                            prod = HASP_STISSegmentList(None, inpath=indir)
-                    else:
-                        print(f'Unknown mode [{instrument}, {grating}, {detector}]')
-                        continue
-                    if prod is not None:
-                        prod.import_data(files_to_import)
-                    prod.target = target
-                    prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
-                    prod.snrmax = snrmax
-                    prod.gratinglist = [grating]
-                    prod.disambiguated_grating = grating.lower()
-                    if grating in ['G230L', 'G140L']:
-                        prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
-                    # these two calls perform the main functions
-                    if len(prod.members) > 0:
-                        prod.create_output_wavelength_grid()
-                        prod.coadd()
-                        if prod.first_good_wavelength is None:
-                            print("No good data, skipping")
-                            no_good_data = True
-                            break
-                        result = prod.calculate_statistics()
-                        files_to_cull = analyse_result(result, threshold=threshold)
-                        if files_to_cull == []:
-                            break
-                        else:
-                            cull_files(files_to_cull, files_to_import)
-                    else:
-                        print(f"No valid data for grating {grating}")
-                    # this writes the output file
-                    # If making HLSPs for a DR, put them in the official folder
-                if no_good_data:
-                    break
-                prod.target = target
-                prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
-                if not os.path.exists(outdir):
-                    os.makedirs(outdir)
-                outname = create_output_file_name(prod, producttype)
-                outname = os.path.join(outdir, outname)
-                prod.write(outname, clobber, level=3)
-                print(f"   Wrote {outname}")
-                products[f'{instrument}/{grating}'] = prod
-                productlist.append(prod)
-                productdict[setting] = prod
-
             abutted_product = create_level4_products(productlist, productdict)
             if abutted_product is not None:
-                filename = create_output_file_name(abutted_product, producttype)
+                filename = create_output_file_name(abutted_product, product_type)
                 filename = os.path.join(outdir, filename)
-                abutted_product.write(filename, clobber, level=4)
+                level = 2
+                if product_type == 'proposal': level = 4
+                abutted_product.write(filename, clobber, level=level)
                 print(f"   Wrote {filename}")
+    return
+
+def create_cross_program_products(product_type, thisprodandtargetspec, product_type_dict, indir, snrmax,
+                                  threshold, outdir, clobber, keyword_filters):
+    # Create dictionary of all products, with each set to None by default
+    products = defaultdict(lambda: None)
+    productlist = []
+    productdict = {}
+    uniqmodes = []
+    no_good_data = False
+    real_indir = os.path.realpath(indir)
+    target_name = real_indir.split('/')[-1]
+    print(f'Creating cross-program products for target {target_name}')
+
+    for uniqmode in thisprodandtargetspec:
+        instrument = uniqmode[0]
+        grating = uniqmode[1]
+        detector = uniqmode[2]
+        setting = instrument + '/' + grating
+        print('Processing grating {}'.format(setting))
+        if (instrument, grating, detector) not in uniqmodes:
+            uniqmodes.append((instrument, grating, detector))
+        files_to_import = product_type_dict[uniqmode]
+        if product_type == 'proposal':
+            if 'MOVINGTARGET' in keyword_filters:
+                files_to_import = check_for_moving_targets(files_to_import)
+        # Flux based filtering loop
+        while True:
+            if len(files_to_import) == 0:
+                print('No good files')
+                no_good_data = True
+                break
+            print('Importing files {}'.format(files_to_import))
+            # this instantiates the class
+            if instrument == 'COS':
+                prod = HASP_COSSegmentList(None, inpath=indir)
+            elif instrument == 'STIS':
+                if detector == 'CCD':
+                    prod = HASP_CCDSegmentList(None, inpath=indir)
+                else:
+                    prod = HASP_STISSegmentList(None, inpath=indir)
+            else:
+                print(f'Unknown mode [{instrument}, {grating}, {detector}]')
+                continue
+            if prod is not None:
+                prod.import_data(files_to_import)
+            prod.target = target_name
+            prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
+            prod.snrmax = snrmax
+            prod.gratinglist = [grating]
+            prod.disambiguated_grating = grating.lower()
+            if grating in ['G230L', 'G140L']:
+                prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
+            # these two calls perform the main functions
+            if len(prod.members) > 0:
+                prod.create_output_wavelength_grid()
+                prod.coadd()
+                if prod.first_good_wavelength is None:
+                    print("No good data, skipping")
+                    no_good_data = True
+                    break
+                result = prod.calculate_statistics()
+                files_to_cull = analyse_result(result, threshold=threshold)
+                if files_to_cull == []:
+                    break
+                else:
+                    print("Removing files from list:")
+                    print(files_to_cull)
+                    cull_files(files_to_cull, files_to_import)
+            else:
+                print(f'No valid data for grating {grating}')
+        # this writes the output file
+        # If making HLSPs for a DR, put them in the official folder
+        if no_good_data:
+            break
+        prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+        outname = create_output_file_name(prod, product_type)
+        outname = os.path.join(outdir, outname)
+        prod.write(outname, clobber, level=1)
+        print(f"   Wrote {outname}")
+        productlist.append(prod)
+        products[setting] = prod
+        productdict[setting] = prod
+
+    abutted_product = create_level4_products(productlist, productdict)
+    if abutted_product is not None:
+        filename = create_output_file_name(abutted_product, product_type)
+        filename = os.path.join(outdir, filename)
+        abutted_product.write(filename, clobber, level=5)
+        print(f"   Wrote {filename}")
+    return
 
 
 def analyse_result(results, threshold=-50):
@@ -1052,6 +1058,8 @@ def create_output_file_name(prod, producttype):
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
     elif producttype == 'proposal':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
+    elif producttype == 'cross-program':
+        name = f"hst_{instrument}_{target}_{grating}_{suffix}.fits"
     return name
 
 
@@ -1097,9 +1105,12 @@ def call_main():
     parser.add_argument("-k", "--no_keyword_filtering", default=False,
                         action="store_true",
                         help="Disable keyword based filtering (except for STIS PRISM data, which is always filtered)")
+    parser.add_argument("-x", "--cross_program",
+                        default=False, action="store_true",
+                        help="Create cross-program products only")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering)
+    main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering, args.cross_program)
 
 
 if __name__ == '__main__':
