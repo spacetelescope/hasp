@@ -147,6 +147,7 @@ class HASP_SegmentList(SegmentList):
                     grating = hdr0['OPT_ELEM']
                     setting = f'{instrument}/{grating}'
                     sdqflags = hdr1['SDQFLAGS']
+                    lifetime_position = get_lifetime_position(hdr0)
                     # Remove 16 from SDQFLAGS for STIS data if it's present
                     if self.instrument == "STIS" and (sdqflags & 16) == 16:
                         sdqflags -= 16
@@ -163,6 +164,7 @@ class HASP_SegmentList(SegmentList):
                         segment.exptime = exptime
                         segment.filename = self.datasets[i]
                         segment.rownum = rownum
+                        segment.lifetime_position = lifetime_position
                         self.members.append(segment)
         return
 
@@ -179,16 +181,20 @@ class HASP_SegmentList(SegmentList):
 
         level : str or int
             HLSP Level:
-                1. Single grating visit level product
-                2. Abutted multi grating visit level product
-                3. Single grating program level product
-                4. Abutted multi grating program level product
+                1. Single grating visit product
+                2. Abutted multi grating visit product
+                3. Single grating program product
+                4. Abutted multi grating program product
+                5. Single grating cross-program product
+                6. Abutted multi grating cross-program product
 
         """
         if level in [1, 2]:
             ipppssoo = self.rootname[:6]
         elif level in [3, 4]:
             ipppssoo = self.rootname[:4]
+        elif level in [5, 6]:
+            ipppssoo = 'N/A'
         else:
             print(f'Unexpected value for level: {level}')
             ipppssoo = self.rootname
@@ -270,6 +276,10 @@ class HASP_SegmentList(SegmentList):
         hdr0['APERTURE'] = (','.join(self.aperturelist), 'Identifier(s) of entrance aperture')
         hdr0['OBSMODE'] = (self.combine_keys("obsmode", "multi"), 'Instrument operating mode (ACCUM | TIME-TAG)')
         hdr0['TARGNAME'] = self.target
+        if self.instrument == 'STIS':
+            hdr0['LIFE_ADJ'] = 'N/A'
+        else:
+            hdr0['LIFE_ADJ'] = self.lifetime_position
         hdr0.add_blank(after='OBSMODE')
         hdr0.add_blank('              / TARGET INFORMATION', before='TARGNAME')
 
@@ -277,7 +287,7 @@ class HASP_SegmentList(SegmentList):
         hdr0['TARG_RA'] = (self.targ_ra, '[deg] Target right ascension')
         hdr0['TARG_DEC'] = (self.targ_dec, '[deg] Target declination')
         hdr0['PROPOSID'] = (self.combine_keys("proposid", "multi"), 'Program identifier')
-        hdr0['PINAME'] = (self.combine_keys("pr_inv_l", "max"), "Principal Investigator")
+        hdr0['PINAME'] = (self.combine_keys("pr_inv_l", "multi"), "Principal Investigator")
         hdr0['MTFLAG'] = (self.combine_keys("mtflag", "multi"), 'Moving Target Flag')
         hdr0['EXTENDED'] = (self.combine_keys("extended", "max"), 'Is target extended?')
         hdr0.add_blank(after='TARG_DEC')
@@ -291,12 +301,11 @@ class HASP_SegmentList(SegmentList):
         hdr0['LICENSE'] = ('CC BY 4.0', 'License for use of these data')
         hdr0['LICENURL'] = ('https://creativecommons.org/licenses/by/4.0/', 'Data license URL')
         hdr0['REFERENC'] = ('https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..205R', 'Bibliographic ID of primary paper')
-
-        hdr0['CENTRWV'] = (self.combine_keys("centrwv", "average"), 'Central wavelength of the data')
-        hdr0.add_blank(after='REFERENC')
-        hdr0.add_blank('           / ARCHIVE SEARCH KEYWORDS', before='CENTRWV')
         hdr0['MINWAVE'] = (self.combine_keys("minwave", "min"), 'Minimum wavelength in spectrum')
+        hdr0.add_blank(after='REFERENC')
+        hdr0.add_blank('           / ARCHIVE SEARCH KEYWORDS', before='MINWAVE')
         hdr0['MAXWAVE'] = (self.combine_keys("maxwave", "max"), 'Maximum wavelength in spectrum')
+        hdr0['CENTRWV'] = (0.5*(hdr0['MAXWAVE'] + hdr0['MINWAVE']), 'Central wavelength of the data')
         hdr0['BANDWID'] = hdr0['MAXWAVE'] - hdr0['MINWAVE']
 
         primary = fits.PrimaryHDU(header=hdr0)
@@ -525,6 +534,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
+    uniqlpindependentmodes = []
     uniqsingletargetmodes = []
     targetlist = []
     visitlist = []
@@ -532,6 +542,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     visitdict = {}
     proposaldict = {}
     singletargetdict = {}
+    lpindependentdict = {}
     spec1d = glob.glob(os.path.join(indir, '*_x1d.fits')) + glob.glob(os.path.join(indir, '*_sx1.fits'))
     spec1d.sort()
     if no_keyword_filtering:
@@ -541,6 +552,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     spec1d = prefilter(spec1d, filters=keyword_filters)
 #
 # Create the list of modes
+    lifetime_positions = []
     print('Creating list of unique modes from these files:')
     for myfile in spec1d:
         f1 = fits.open(myfile)
@@ -548,12 +560,14 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
         instrument = prihdr['INSTRUME']
         grating = prihdr['OPT_ELEM']
         detector = prihdr['DETECTOR']
+        lifetime_position = get_lifetime_position(prihdr)
         targname = prihdr['TARGNAME']
         visit = myfile[-14:-12]
         proposal = prihdr['PROPOSID']
         aperture = prihdr['PROPAPER']
         visit = (proposal, visit)
-        obsmode = (instrument, grating, detector)
+        obsmode = (instrument, grating, detector, lifetime_position)
+        lpindependentmode = (instrument, grating, detector)
         visitmode = (instrument, grating, detector, targname, visit)
         proposalmode = (instrument, grating, detector, targname, proposal)
         if targname not in targetlist:
@@ -563,6 +577,11 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
             singletargetdict[obsmode] = [myfile]
         else:
             singletargetdict[obsmode].append(myfile)
+        if lpindependentmode not in uniqlpindependentmodes:
+            uniqlpindependentmodes.append(lpindependentmode)
+            lpindependentdict[lpindependentmode] = [myfile]
+        else:
+            lpindependentdict[lpindependentmode].append(myfile)
         if visitmode not in uniqvisitmodes:
             uniqvisitmodes.append(visitmode)
             visitdict[visitmode] = [myfile]
@@ -577,7 +596,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
             visitlist.append(visit)
         if proposal not in proposallist:
             proposallist.append(proposal)
-        print(myfile, targname, instrument, detector, grating, aperture, proposal, visit)
+        print(myfile, targname, instrument, detector, grating, aperture, lifetime_position, proposal, visit)
         f1.close()
 
     visitlist.sort()
@@ -585,8 +604,22 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
 
     
     if cross_program:
-        create_cross_program_products('cross-program', uniqmodes, singletargetdict, indir, 
-                                      snrmax, threshold, outdir, clobber, keyword_filters)
+        _, _ = create_cross_program_products('cross-program', uniqmodes,singletargetdict,
+                                             indir,snrmax, threshold, outdir, clobber,
+                                             keyword_filters, write_products=True)
+        productlist, productdict = create_cross_program_products('cross-program',
+                                                                 uniqlpindependentmodes,
+                                                                 lpindependentdict, indir,
+                                                                 snrmax, threshold, outdir, clobber, 
+                                                                 keyword_filters,
+                                                                 write_products=False)
+        abutted_product = create_level4_products(productlist, productdict)
+        if abutted_product is not None:
+            filename = create_output_file_name(abutted_product, 'cross-program')
+            filename = os.path.join(outdir, filename)
+            abutted_product.write(filename, clobber, level=6)
+            print(f"   Wrote {filename}")
+
     else:
         create_products('visit', visitlist, visitdict, indir, snrmax, threshold, outdir,
                         clobber, keyword_filters)
@@ -664,6 +697,7 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                     prod.snrmax = snrmax
                     prod.gratinglist = [grating]
                     prod.disambiguated_grating = grating.lower()
+                    prod.lifetime_position = prod.members[0].lifetime_position
                     if grating in ['G230L', 'G140L']:
                         prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
                     # these two calls perform the main functions
@@ -702,6 +736,7 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 productlist.append(prod)
                 products[setting] = prod
                 productdict[setting] = prod
+                prod.product_type = product_type
 
             abutted_product = create_level4_products(productlist, productdict)
             if abutted_product is not None:
@@ -711,99 +746,132 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 if product_type == 'proposal': level = 4
                 abutted_product.write(filename, clobber, level=level)
                 print(f"   Wrote {filename}")
+
     return
 
 def create_cross_program_products(product_type, thisprodandtargetspec, product_type_dict, indir, snrmax,
-                                  threshold, outdir, clobber, keyword_filters):
-    # Create dictionary of all products, with each set to None by default
+                                  threshold, outdir, clobber, keyword_filters, write_products=True):
+    # For cross-program products, we need to make single grating products for each distinct Lifetime Position (LP)
+    # for COS.  These should have names like hst_cos_targetname_grating_lpnn_cspec.fits.  If there is only 1 LP
+    # product for a COS grating, or if the product is for STIS data, the filename should omit the _lpnn part.
+    # For gratings with multiple LPs, we need to also create a product from all the LPs so that it can be used in
+    # the abutment, but this LP-independent product should not be written.  The abutted product name should be of the
+    # form hst_cos-stis_targetname_hyphenated-list-of-gratings_cspec.fits
     products = defaultdict(lambda: None)
     productlist = []
     productdict = {}
-    uniqmodes = []
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
     no_good_data = False
     real_indir = os.path.realpath(indir)
     target_name = real_indir.split('/')[-1]
+    modes_with_more_than_1_lp = []
+    lp_independent_modes = []
+    for mode in thisprodandtargetspec:
+        lpindependentmode = mode[:3]
+        if lpindependentmode in lp_independent_modes:
+            if lpindependentmode not in modes_with_more_than_1_lp:
+                modes_with_more_than_1_lp.append(lpindependentmode)
+        else:
+            lp_independent_modes.append(lpindependentmode)
+    print(thisprodandtargetspec)
+    print(modes_with_more_than_1_lp)
     print(f'Creating cross-program products for target {target_name}')
-
     for uniqmode in thisprodandtargetspec:
+        files_to_import = product_type_dict[uniqmode]
+        if 'MOVINGTARGET' in keyword_filters:
+            files_to_import = check_for_moving_targets(files_to_import)
         instrument = uniqmode[0]
         grating = uniqmode[1]
         detector = uniqmode[2]
+        lifetime_position = 'N/A'
         setting = instrument + '/' + grating
-        print('Processing grating {}'.format(setting))
-        if (instrument, grating, detector) not in uniqmodes:
-            uniqmodes.append((instrument, grating, detector))
-        files_to_import = product_type_dict[uniqmode]
-        if product_type == 'proposal':
-            if 'MOVINGTARGET' in keyword_filters:
-                files_to_import = check_for_moving_targets(files_to_import)
-        # Flux based filtering loop
-        while True:
-            if len(files_to_import) == 0:
-                print('No good files')
-                no_good_data = True
-                break
-            print('Importing files {}'.format(files_to_import))
-            # this instantiates the class
-            if instrument == 'COS':
-                prod = HASP_COSSegmentList(None, inpath=indir)
-            elif instrument == 'STIS':
-                if detector == 'CCD':
-                    prod = HASP_CCDSegmentList(None, inpath=indir)
-                else:
-                    prod = HASP_STISSegmentList(None, inpath=indir)
-            else:
-                print(f'Unknown mode [{instrument}, {grating}, {detector}]')
-                continue
-            if prod is not None:
-                prod.import_data(files_to_import)
-            prod.target = target_name
-            prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
-            prod.snrmax = snrmax
-            prod.gratinglist = [grating]
-            prod.disambiguated_grating = grating.lower()
-            if grating in ['G230L', 'G140L']:
-                prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
-            # these two calls perform the main functions
-            if len(prod.members) > 0:
-                prod.create_output_wavelength_grid()
-                prod.coadd()
-                if prod.first_good_wavelength is None:
-                    print("No good data, skipping")
-                    no_good_data = True
-                    break
-                result = prod.calculate_statistics()
-                files_to_cull = analyse_result(result, threshold=threshold)
-                if files_to_cull == []:
-                    break
-                else:
-                    print("Removing files from list:")
-                    print(files_to_cull)
-                    cull_files(files_to_cull, files_to_import)
-            else:
-                print(f'No valid data for grating {grating}')
+        if len(uniqmode) == 4 and instrument == 'COS':
+            lifetime_position = uniqmode[3]
+            print(f'Processing grating {setting} at lifetime position {lifetime_position}')
+        else:
+            print(f'Processing grating {setting}')
+        prod = processmode(uniqmode, files_to_import, indir, target_name, snrmax, threshold)
+        prod.target = target_name
+        prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
+        prod.snrmax = snrmax
+        prod.gratinglist = [grating]
+        prod.disambiguated_grating = grating.lower()
+        if grating in ['G230L', 'G140L']:
+            prod.disambiguated_grating = instrument.lower()[0] + grating.lower()
+        prod.lifetime_position = lifetime_position
+        prod.product_type = product_type
+        prod.morethan1lp = False
+        if uniqmode[:3] in modes_with_more_than_1_lp:
+            prod.morethan1lp = True
         # this writes the output file
         # If making HLSPs for a DR, put them in the official folder
         if no_good_data:
-            break
-        prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
-        outname = create_output_file_name(prod, product_type)
-        outname = os.path.join(outdir, outname)
-        prod.write(outname, clobber, level=1)
-        print(f"   Wrote {outname}")
+            return None
+        if write_products:
+            outname = create_output_file_name(prod, product_type)
+            outname = os.path.join(outdir, outname)
+            prod.write(outname, clobber, level=5)
+            print(f"   Wrote {outname}")
+
         productlist.append(prod)
         products[setting] = prod
         productdict[setting] = prod
+    return (productlist, productdict)
 
-    abutted_product = create_level4_products(productlist, productdict)
-    if abutted_product is not None:
-        filename = create_output_file_name(abutted_product, product_type)
-        filename = os.path.join(outdir, filename)
-        abutted_product.write(filename, clobber, level=5)
-        print(f"   Wrote {filename}")
-    return
+def processmode(uniqmode, files_to_import, indir, target_name, snrmax, threshold):
+    # Flux based filtering loop
+    instrument = uniqmode[0]
+    grating = uniqmode[1]
+    detector = uniqmode[2]
+    while True:
+        if len(files_to_import) == 0:
+            print('No good files')
+            no_good_data = True
+            break
+        print('Importing files {}'.format(files_to_import))
+        # this instantiates the class
+        if instrument == 'COS':
+            prod = HASP_COSSegmentList(None, inpath=indir)
+        elif instrument == 'STIS':
+            if detector == 'CCD':
+                prod = HASP_CCDSegmentList(None, inpath=indir)
+            else:
+                prod = HASP_STISSegmentList(None, inpath=indir)
+        else:
+            print(f'Unknown mode [{instrument}, {grating}, {detector}]')
+            continue
+        if prod is not None:
+            prod.import_data(files_to_import)
+        # these two calls perform the main functions
+        if len(prod.members) > 0:
+            prod.create_output_wavelength_grid()
+            prod.coadd()
+            if prod.first_good_wavelength is None:
+                print("No good data, skipping")
+                no_good_data = True
+                break
+            prod.snrmax = snrmax
+            result = prod.calculate_statistics()
+            files_to_cull = analyse_result(result, threshold=threshold)
+            if files_to_cull == []:
+                break
+            else:
+                print("Removing files from list:")
+                print(files_to_cull)
+                cull_files(files_to_cull, files_to_import)
+        else:
+            print(f'No valid data for grating {grating}')
+    return prod
+
+def get_lifetime_position(prihdr):
+    try:
+        lifetime_position = prihdr['LIFE_ADJ']
+        if lifetime_position not in [x + 1 for x in range(10)]:
+            lifetime_position = 0
+    except KeyError:
+        lifetime_position = 0
+    return lifetime_position
 
 
 def analyse_result(results, threshold=-50):
@@ -1059,7 +1127,11 @@ def create_output_file_name(prod, producttype):
     elif producttype == 'proposal':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
     elif producttype == 'cross-program':
-        name = f"hst_{instrument}_{target}_{grating}_{suffix}.fits"
+        if prod.morethan1lp:
+            lifetime_position_string = 'lp{:02d}'.format(prod.lifetime_position)
+            name = f"hst_{instrument}_{target}_{grating}_{lifetime_position_string}_{suffix}.fits"
+        else:
+            name = f"hst_{instrument}_{target}_{grating}_{suffix}.fits"
     return name
 
 
