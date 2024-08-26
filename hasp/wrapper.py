@@ -613,6 +613,9 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
                                                                  snrmax, threshold, outdir, clobber, 
                                                                  keyword_filters,
                                                                  write_products=False)
+        if len(productlist) == 0:
+            print("No products to abut for this target")
+            return
         abutted_product = create_level4_products(productlist, productdict)
         if abutted_product is not None:
             filename = create_output_file_name(abutted_product, 'cross-program')
@@ -781,6 +784,9 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
         files_to_import = product_type_dict[uniqmode]
         if 'MOVINGTARGET' in keyword_filters:
             files_to_import = check_for_moving_targets(files_to_import)
+        if len(files_to_import) == 0:
+            print(f"No files to import, exiting mode {uniqmode}")
+            continue
         instrument = uniqmode[0]
         grating = uniqmode[1]
         detector = uniqmode[2]
