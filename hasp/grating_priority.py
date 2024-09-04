@@ -51,7 +51,7 @@ def create_level4_products(productlist, productdict, grating_table=GRATING_PRIOR
         print('No valid input grating products')
         return None
     if ngratings == 1:
-        print("Onlt 1 grating to abut, exiting")
+        print("Only 1 grating to abut, exiting")
         return None
     print("Making a product from these gratings")
     for grating in used_gratings_list:
