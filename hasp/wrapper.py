@@ -662,7 +662,6 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
             productlist = []
             productdict = {}
             uniqmodes = []
-            no_good_data = False
             for uniqmode in thisprodandtargetspec:
                 instrument = uniqmode[0]
                 grating = uniqmode[1]
@@ -676,6 +675,7 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                     if 'MOVINGTARGET' in keyword_filters:
                         files_to_import = check_for_moving_targets(files_to_import)
                 # Flux based filtering loop
+                no_good_data = False
                 while True:
                     if len(files_to_import) == 0:
                         print('No good files')
@@ -724,7 +724,7 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 # this writes the output file
                 # If making HLSPs for a DR, put them in the official folder
                 if no_good_data:
-                    break
+                    continue
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                 target = prod.target.lower()
