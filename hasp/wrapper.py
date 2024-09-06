@@ -5,6 +5,7 @@ import re
 import glob
 import datetime
 from datetime import datetime as dt
+import json
 import numpy as np
 
 import astropy
@@ -20,7 +21,7 @@ from .grating_priority import create_level4_products
 
 CAL_VER = 0.1
 
-INTERNAL_TARGETS = ['WAVE']
+EXCLUDED_TARGETS = ['ANY', 'WAVE']
 
 PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
               'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM',
@@ -325,6 +326,7 @@ class HASP_SegmentList(SegmentList):
         cdis = fits.Column(name='DISPERSER', array=self.combine_keys("opt_elem", "arr"), format='A32')
         ccen = fits.Column(name='CENWAVE', array=self.combine_keys("cenwave", "arr"), format='A32')
         cap = fits.Column(name='APERTURE', array=self.combine_keys("aperture", "arr"), format='A32')
+        clp = fits.Column(name='LIFE_ADJ', array=self.combine_keys("life_adj", "arr"), format='A32')
         csr = fits.Column(name='SPECRES', array=self.combine_keys("specres", "arr"), format='F8.1')
         ccv = fits.Column(name='CAL_VER', array=self.combine_keys("cal_ver", "arr"), format='A32')
         mjd_begs = self.combine_keys("expstart", "arr")
@@ -337,7 +339,8 @@ class HASP_SegmentList(SegmentList):
         cmin = fits.Column(name='MINWAVE', array=self.combine_keys("minwave", "arr"), format='F9.4', unit='Angstrom')
         cmax = fits.Column(name='MAXWAVE', array=self.combine_keys("maxwave", "arr"), format='F9.4', unit='Angstrom')
 
-        cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm, cde, cexp, cmin, cmax])
+        cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, clp, csr, ccv, cdb, cdm,
+                            cde, cexp, cmin, cmax])
 
         table2 = fits.BinTableHDU.from_columns(cd2, header=hdr2)
 
@@ -371,6 +374,7 @@ class HASP_SegmentList(SegmentList):
                           "opt_elem": ("opt_elem", 0),
                           "cenwave": ("cenwave", 0),
                           "aperture": ("aperture", 0),
+                          "life_adj": ("life_adj", 0),
                           "obsmode": ("obsmode", 0),
                           "proposid": ("proposid", 0),
                           "centrwv": ("centrwv", 0),
@@ -519,7 +523,8 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
     pass
 
 
-def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False, cross_program=False):
+def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False, cross_program=False,
+         grating_table=None):
     # Find out which unique modes are present
     # For single visit products, a unique mode is
     # (target, instrument, grating, detector, visit)
@@ -531,6 +536,11 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
         print(f'Ullyses version {ullyses.__version__}')
     except:
         print('Ullyses version unavailable')
+    grating_priorities = None
+    if grating_table is not None:
+        fg = open(grating_table)
+        grating_priorities = json.load(fg)
+        fg.close() 
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
@@ -616,22 +626,23 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
         if len(productlist) == 0:
             print("No products to abut for this target")
             return
-        abutted_product = create_level4_products(productlist, productdict)
+        abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities )
         if abutted_product is not None:
-            filename = create_output_file_name(abutted_product, 'cross-program')
+            level = 6
+            filename = create_output_file_name(abutted_product, 'cross-program', level)
             filename = os.path.join(outdir, filename)
             abutted_product.write(filename, clobber, level=6)
             print(f"   Wrote {filename}")
 
     else:
         create_products('visit', visitlist, visitdict, indir, snrmax, threshold, outdir,
-                        clobber, keyword_filters)
+                        clobber, keyword_filters, grating_priorities)
         create_products('proposal', proposallist, proposaldict, indir, snrmax, threshold,
-                        outdir, clobber, keyword_filters)
+                        outdir, clobber, keyword_filters, grating_priorities)
 
 
 def create_products(product_type, product_type_list, product_type_dict, indir, snrmax,
-                    threshold, outdir, clobber, keyword_filters):
+                    threshold, outdir, clobber, keyword_filters, grating_priorities):
     print(f'Looping over {product_type}s')
     for prod_type in product_type_list:
         print('Processing product {}'.format(prod_type))
@@ -648,8 +659,8 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
 
         for target in targetsinthisprod:
             print('Processing target {} in {} {}'.format(target, product_type, prod_type))
-            if target in INTERNAL_TARGETS:
-                print('{} is an internal target and will not be processed'.format(target))
+            if target in EXCLUDED_TARGETS:
+                print('{} is an excluded target and will not be processed'.format(target))
                 continue
             thisprodandtargetspec = []
             for prodspec in thisprodkeys:
@@ -728,12 +739,12 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 prod.target = prod.get_targname()
                 prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
                 target = prod.target.lower()
-                if not os.path.exists(outdir):
-                    os.makedirs(outdir)
-                outname = create_output_file_name(prod, product_type)
-                outname = os.path.join(outdir, outname)
                 level = 1
                 if product_type == 'proposal': level = 3
+                if not os.path.exists(outdir):
+                    os.makedirs(outdir)
+                outname = create_output_file_name(prod, product_type, level)
+                outname = os.path.join(outdir, outname)
                 prod.write(outname, clobber, level=level)
                 print(f"   Wrote {outname}")
                 productlist.append(prod)
@@ -741,12 +752,12 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 productdict[setting] = prod
                 prod.product_type = product_type
 
-            abutted_product = create_level4_products(productlist, productdict)
+            abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities)
             if abutted_product is not None:
-                filename = create_output_file_name(abutted_product, product_type)
-                filename = os.path.join(outdir, filename)
                 level = 2
                 if product_type == 'proposal': level = 4
+                filename = create_output_file_name(abutted_product, product_type, level)
+                filename = os.path.join(outdir, filename)
                 abutted_product.write(filename, clobber, level=level)
                 print(f"   Wrote {filename}")
 
@@ -815,7 +826,8 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
         if no_good_data:
             return None
         if write_products:
-            outname = create_output_file_name(prod, product_type)
+            level = 5
+            outname = create_output_file_name(prod, product_type, level)
             outname = os.path.join(outdir, outname)
             prod.write(outname, clobber, level=5)
             print(f"   Wrote {outname}")
@@ -1117,7 +1129,7 @@ def check_for_moving_targets(files_to_import):
     return not_moving
 
 
-def create_output_file_name(prod, producttype):
+def create_output_file_name(prod, producttype, level):
     instrument = prod.instrument.lower()   # will be either cos or stis. If abutted can be cos-stis
     grating = prod.disambiguated_grating.lower()
     target = prod.target.lower()
@@ -1127,13 +1139,19 @@ def create_output_file_name(prod, producttype):
 
     target = sanitize_targname(target)
 
-    suffix = "cspec"
+    if level in [1, 3, 5]:
+        suffix = "cspec"
+    elif level in [2, 4, 6]:
+        suffix = "aspec"
+    else:
+        print(f"Unknown level {level}")
+        suffix = "spec"
     if producttype == 'visit':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ipppss}_{suffix}.fits"
     elif producttype == 'proposal':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
     elif producttype == 'cross-program':
-        if prod.morethan1lp:
+        if (instrument == 'cos') and (level == 5):
             lifetime_position_string = 'lp{:02d}'.format(prod.lifetime_position)
             name = f"hst_{instrument}_{target}_{grating}_{lifetime_position_string}_{suffix}.fits"
         else:
@@ -1186,9 +1204,13 @@ def call_main():
     parser.add_argument("-x", "--cross_program",
                         default=False, action="store_true",
                         help="Create cross-program products only")
+    parser.add_argument("-g", "--grating_table",
+                        default=None,
+                        help="Name of grating priority file [None]")
     args = parser.parse_args()
 
-    main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering, args.cross_program)
+    main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering,
+         args.cross_program, args.grating_table)
 
 
 if __name__ == '__main__':

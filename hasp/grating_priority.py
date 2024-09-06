@@ -45,6 +45,8 @@ def create_level4_products(productlist, productdict, grating_table=GRATING_PRIOR
         The abutted product
 
     """
+    if grating_table is None:
+        grating_table = GRATING_PRIORITIES
     used_gratings_list = get_used_gratings(productlist, grating_table)
     ngratings = len(used_gratings_list)
     if ngratings == 0:

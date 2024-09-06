@@ -1,0 +1,107 @@
+{
+"STIS/E140M": {
+    "minwave": 1141.6,
+    "maxwave": 1727.2,
+    "priority": 1
+},
+"COS/G130M": {
+    "minwave": 900,
+    "maxwave": 1470,
+    "priority": 2
+},
+"COS/G160M": {
+    "minwave": 1342,
+    "maxwave": 1800,
+    "priority": 3
+},
+"STIS/E140H": {
+    "minwave": 1141.1,
+    "maxwave": 1687.9,
+    "priority": 4
+},
+"STIS/G140M": {
+    "minwave": 1145.1,
+    "maxwave": 1741.9,
+    "priority": 5
+},
+"STIS/E230M": {
+    "minwave": 1606.7,
+    "maxwave": 3119.2,
+    "priority": 6
+},
+"STIS/E230H": {
+    "minwave": 1629.0,
+    "maxwave": 3156.0,
+    "priority": 7
+},
+"STIS/G230M": {
+    "minwave": 1641.8,
+    "maxwave": 3098.2,
+    "priority": 8
+},
+"COS/G140L": {
+    "minwave": 901,
+    "maxwave": 2150,
+    "priority": 9
+},
+"STIS/G230MB": {
+    "minwave": 1635.0,
+    "maxwave": 3184.5,
+    "priority": 10
+},
+"COS/G185M": {
+    "minwave": 1664,
+    "maxwave": 2134,
+    "priority": 11
+},
+"COS/G225M": {
+    "minwave": 2069,
+    "maxwave": 2526,
+    "priority": 12
+},
+"COS/G285M": {
+    "minwave": 2474,
+    "maxwave": 3221,
+    "priority": 13
+},
+"STIS/G140L": {
+    "minwave": 1138.4,
+    "maxwave": 1716.4,
+    "priority": 14
+},
+"STIS/G430M": {
+    "minwave": 3021.9,
+    "maxwave": 5610.1,
+    "priority": 15
+},
+"STIS/G230L": {
+    "minwave": 1582.0,
+    "maxwave": 3158.7,
+    "priority": 16
+},
+"STIS/G230LB": {
+    "minwave": 1667.1,
+    "maxwave": 3071.6,
+    "priority": 17
+},
+"COS/G230L": {
+    "minwave": 1650,
+    "maxwave": 3200,
+    "priority": 18
+},
+"STIS/G750M": {
+    "minwave": 5464.6,
+    "maxwave": 10645.1,
+    "priority": 19
+},
+"STIS/G430L": {
+    "minwave": 2895.9,
+    "maxwave": 5704.4,
+    "priority": 20
+},
+"STIS/G750L": {
+    "minwave": 5261.3,
+    "maxwave": 10252.3,
+    "priority": 21
+}
+}
