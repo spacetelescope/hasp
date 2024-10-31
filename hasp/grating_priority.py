@@ -52,9 +52,9 @@ def create_level4_products(productlist, productdict, grating_table=GRATING_PRIOR
     if ngratings == 0:
         print('No valid input grating products')
         return None
-    if ngratings == 1:
-        print("Only 1 grating to abut, exiting")
-        return None
+#     if ngratings == 1:
+#         print("Only 1 grating to abut, exiting")
+#         return None
     print("Making a product from these gratings")
     for grating in used_gratings_list:
         actual_minwave = productdict[grating['name']].first_good_wavelength

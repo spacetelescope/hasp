@@ -277,10 +277,11 @@ class HASP_SegmentList(SegmentList):
         hdr0['APERTURE'] = (','.join(self.aperturelist), 'Identifier(s) of entrance aperture')
         hdr0['OBSMODE'] = (self.combine_keys("obsmode", "multi"), 'Instrument operating mode (ACCUM | TIME-TAG)')
         hdr0['TARGNAME'] = self.target
-        if self.instrument == 'STIS':
-            hdr0['LIFE_ADJ'] = 'N/A'
-        else:
-            hdr0['LIFE_ADJ'] = self.lifetime_position
+        if level in [5, 6]:
+            if self.instrument == 'STIS':
+                hdr0['LIFE_ADJ'] = 'N/A'
+            else:
+                hdr0['LIFE_ADJ'] = self.lifetime_position
         hdr0.add_blank(after='OBSMODE')
         hdr0.add_blank('              / TARGET INFORMATION', before='TARGNAME')
 
@@ -326,7 +327,8 @@ class HASP_SegmentList(SegmentList):
         cdis = fits.Column(name='DISPERSER', array=self.combine_keys("opt_elem", "arr"), format='A32')
         ccen = fits.Column(name='CENWAVE', array=self.combine_keys("cenwave", "arr"), format='A32')
         cap = fits.Column(name='APERTURE', array=self.combine_keys("aperture", "arr"), format='A32')
-        clp = fits.Column(name='LIFE_ADJ', array=self.combine_keys("life_adj", "arr"), format='A32')
+        if level in [5, 6]:
+            clp = fits.Column(name='LIFE_ADJ', array=self.combine_keys("life_adj", "arr"), format='A32')
         csr = fits.Column(name='SPECRES', array=self.combine_keys("specres", "arr"), format='F8.1')
         ccv = fits.Column(name='CAL_VER', array=self.combine_keys("cal_ver", "arr"), format='A32')
         mjd_begs = self.combine_keys("expstart", "arr")
@@ -339,8 +341,12 @@ class HASP_SegmentList(SegmentList):
         cmin = fits.Column(name='MINWAVE', array=self.combine_keys("minwave", "arr"), format='F9.4', unit='Angstrom')
         cmax = fits.Column(name='MAXWAVE', array=self.combine_keys("maxwave", "arr"), format='F9.4', unit='Angstrom')
 
-        cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, clp, csr, ccv, cdb, cdm,
-                            cde, cexp, cmin, cmax])
+        if level in [5, 6]:
+            cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, clp, csr, ccv, cdb, cdm,
+                                cde, cexp, cmin, cmax])
+        else:
+            cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm,
+                                cde, cexp, cmin, cmax])
 
         table2 = fits.BinTableHDU.from_columns(cd2, header=hdr2)
 
@@ -751,8 +757,14 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 products[setting] = prod
                 productdict[setting] = prod
                 prod.product_type = product_type
-
-            abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities)
+            if len(productlist) == 0:
+                print("No products to abut for this setting")
+                return
+            if len(productlist) == 1:
+                print("Only 1 grating to abut, skipping abutment")
+                return
+            else:
+                abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities)
             if abutted_product is not None:
                 level = 2
                 if product_type == 'proposal': level = 4
@@ -776,7 +788,6 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
     productdict = {}
     if not os.path.exists(outdir):
         os.makedirs(outdir)
-    no_good_data = False
     real_indir = os.path.realpath(indir)
     target_name = real_indir.split('/')[-1]
     modes_with_more_than_1_lp = []
@@ -809,6 +820,8 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
         else:
             print(f'Processing grating {setting}')
         prod = processmode(uniqmode, files_to_import, indir, target_name, snrmax, threshold)
+        if prod is None:
+            continue
         prod.target = target_name
         prod.targ_ra, prod.targ_dec, prod.epoch = prod.get_coords()
         prod.snrmax = snrmax
@@ -823,8 +836,6 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
             prod.morethan1lp = True
         # this writes the output file
         # If making HLSPs for a DR, put them in the official folder
-        if no_good_data:
-            return None
         if write_products:
             level = 5
             outname = create_output_file_name(prod, product_type, level)
@@ -868,7 +879,7 @@ def processmode(uniqmode, files_to_import, indir, target_name, snrmax, threshold
             if prod.first_good_wavelength is None:
                 print("No good data, skipping")
                 no_good_data = True
-                break
+                return None
             prod.snrmax = snrmax
             result = prod.calculate_statistics()
             files_to_cull = analyse_result(result, threshold=threshold)
@@ -1139,9 +1150,9 @@ def create_output_file_name(prod, producttype, level):
 
     target = sanitize_targname(target)
 
-    if level in [1, 3, 5]:
+    if level in range(1, 6):
         suffix = "cspec"
-    elif level in [2, 4, 6]:
+    elif level == 6:
         suffix = "aspec"
     else:
         print(f"Unknown level {level}")
@@ -1151,11 +1162,14 @@ def create_output_file_name(prod, producttype, level):
     elif producttype == 'proposal':
         name = f"hst_{propid}_{instrument}_{target}_{grating}_{ippp}_{suffix}.fits"
     elif producttype == 'cross-program':
-        if (instrument == 'cos') and (level == 5):
-            lifetime_position_string = 'lp{:02d}'.format(prod.lifetime_position)
-            name = f"hst_{instrument}_{target}_{grating}_{lifetime_position_string}_{suffix}.fits"
+        if level == 6:
+            name = f"hst_{target}_{suffix}.fits"
         else:
-            name = f"hst_{instrument}_{target}_{grating}_{suffix}.fits"
+            if (instrument == 'cos'):
+                lifetime_position_string = 'lp{:02d}'.format(prod.lifetime_position)
+                name = f"hst_{instrument}_{target}_{grating}_{lifetime_position_string}_{suffix}.fits"
+            else:
+                name = f"hst_{instrument}_{target}_{grating}_{suffix}.fits"
     return name
 
 
