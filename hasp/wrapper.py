@@ -759,10 +759,10 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
                 prod.product_type = product_type
             if len(productlist) == 0:
                 print("No products to abut for this setting")
-                return
+                continue
             if len(productlist) == 1:
                 print("Only 1 grating to abut, skipping abutment")
-                return
+                continue
             else:
                 abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities)
             if abutted_product is not None:
