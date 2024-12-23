@@ -327,8 +327,7 @@ class HASP_SegmentList(SegmentList):
         cdis = fits.Column(name='DISPERSER', array=self.combine_keys("opt_elem", "arr"), format='A32')
         ccen = fits.Column(name='CENWAVE', array=self.combine_keys("cenwave", "arr"), format='A32')
         cap = fits.Column(name='APERTURE', array=self.combine_keys("aperture", "arr"), format='A32')
-        if level in [5, 6]:
-            clp = fits.Column(name='LIFE_ADJ', array=self.combine_keys("life_adj", "arr"), format='A32')
+        clp = fits.Column(name='LIFE_ADJ', array=self.combine_keys("life_adj", "arr"), format='A32')
         csr = fits.Column(name='SPECRES', array=self.combine_keys("specres", "arr"), format='F8.1')
         ccv = fits.Column(name='CAL_VER', array=self.combine_keys("cal_ver", "arr"), format='A32')
         mjd_begs = self.combine_keys("expstart", "arr")
@@ -341,11 +340,7 @@ class HASP_SegmentList(SegmentList):
         cmin = fits.Column(name='MINWAVE', array=self.combine_keys("minwave", "arr"), format='F9.4', unit='Angstrom')
         cmax = fits.Column(name='MAXWAVE', array=self.combine_keys("maxwave", "arr"), format='F9.4', unit='Angstrom')
 
-        if level in [5, 6]:
-            cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, clp, csr, ccv, cdb, cdm,
-                                cde, cexp, cmin, cmax])
-        else:
-            cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, csr, ccv, cdb, cdm,
+        cd2 = fits.ColDefs([cfn, ce_n, cpid, ctel, cins, cdet, cdis, ccen, cap, clp, csr, ccv, cdb, cdm,
                                 cde, cexp, cmin, cmax])
 
         table2 = fits.BinTableHDU.from_columns(cd2, header=hdr2)
