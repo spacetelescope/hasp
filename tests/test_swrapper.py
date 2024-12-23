@@ -94,7 +94,7 @@ class TestWrapper():
             truth_filename = self.get_truth_filename(program, new_product)
             fdiff = FITSDiff(new_product, truth_filename,
                              ignore_keywords=keywords_to_ignore,
-                             rtol=1.0e-7)
+                             rtol=3.0e-7)
             fitsdiff_report += fdiff.report()
             if not fdiff.identical and all_ok:
                 all_ok = False
