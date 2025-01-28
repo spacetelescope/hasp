@@ -45,14 +45,16 @@ def create_level4_products(productlist, productdict, grating_table=GRATING_PRIOR
         The abutted product
 
     """
+    if grating_table is None:
+        grating_table = GRATING_PRIORITIES
     used_gratings_list = get_used_gratings(productlist, grating_table)
     ngratings = len(used_gratings_list)
     if ngratings == 0:
         print('No valid input grating products')
         return None
-    if ngratings == 1:
-        print("Only 1 grating to abut, exiting")
-        return None
+#     if ngratings == 1:
+#         print("Only 1 grating to abut, exiting")
+#         return None
     print("Making a product from these gratings")
     for grating in used_gratings_list:
         actual_minwave = productdict[grating['name']].first_good_wavelength
@@ -271,24 +273,31 @@ def abut(product_short, product_long, transition_wavelength):
             temp_instrument_list = [product_short.instrument, product_long.instrument]
             temp_instrument_list.sort()
             product_abutted.instrument = '-'.join(temp_instrument_list)
-        target_matched = False
-        if product_short.target == product_long.target:
-            product_abutted.target = product_short.target
-            target_matched = True
-            product_abutted.targnames = [product_short.target, product_long.target]
+        if product_long.product_type != 'cross-program':
+            target_matched = False
+            if product_short.target == product_long.target:
+                product_abutted.target = product_short.target
+                target_matched = True
+                product_abutted.targnames = [product_short.target, product_long.target]
+            else:
+                for target_name in product_short.targnames:
+                    if target_name in product_long.targnames:
+                        product_abutted.target = target_name
+                        target_matched = True
+                        product_abutted.targnames = [target_name]
+            if not target_matched:
+                product_abutted = None
+                print('Trying to abut spectra from 2 different targets:')
+                print(f'{product_short.target} and {product_long.target}')
         else:
-            for target_name in product_short.targnames:
-                if target_name in product_long.targnames:
-                    product_abutted.target = target_name
-                    target_matched = True
-                    product_abutted.targnames = [target_name]
-        if not target_matched:
-            product_abutted = None
-            print('Trying to abut spectra from 2 different targets:')
-            print(f'{product_short.target} and {product_long.target}')
+            product_abutted.target = product_short.target
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
         product_abutted.num_exp = product_short.num_exp + product_long.num_exp
+        if product_long.lifetime_position == product_short.lifetime_position:
+            product_abutted.lifetime_position = product_short.lifetime_position
+        else:
+            product_abutted.lifetime_position = 'N/A'
     elif product_short is not None:
         # This will be the case for the last grating
         output_grating = product_short.grating
@@ -321,6 +330,8 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.propid = product_short.propid
         product_abutted.rootname = product_short.rootname
         product_abutted.num_exp = product_short.num_exp
+        product_abutted.morethan1lp = False
+        product_abutted.lifetime_position = product_short.lifetime_position
     elif product_long is not None:
         # This is the case for the first grating
         output_grating = product_long.disambiguated_grating
@@ -346,7 +357,8 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.gratinglist = product_long.gratinglist
         product_abutted.aperturelist = product_long.aperturelist
         product_abutted.instrumentlist = product_long.instrumentlist
-        product_long.target = product_long.get_targname()
+        if product_long.product_type != 'cross-program':
+            product_long.target = product_long.get_targname()
         product_abutted.instrument = product_long.instrument
         product_abutted.target = product_long.target
         target_matched = True
@@ -354,6 +366,7 @@ def abut(product_short, product_long, transition_wavelength):
         product_abutted.propid = product_long.propid
         product_abutted.rootname = product_long.rootname
         product_abutted.num_exp = product_long.num_exp
+        product_abutted.lifetime_position = product_long.lifetime_position
     else:
         product_abutted = None
     product_abutted.targ_ra, product_abutted.targ_dec, product_abutted.epoch = product_abutted.get_coords()
