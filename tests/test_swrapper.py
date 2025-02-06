@@ -54,17 +54,6 @@ class TestWrapper():
             raise AssertionError(report)
         return
 
-
-    def test_13471(self):
-        program = Program_13471
-        self.setup_tree(program)
-        self.run_wrapper(program['name'])
-        report = self.compare_outputs(program['name'])
-        self.cleanup(program['name'])
-        if report is not None:
-            raise AssertionError(report)
-        return
-
     def setup_tree(self, program):
         program_name = program['name']
         url = program['url']

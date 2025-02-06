@@ -17,7 +17,7 @@ import hasp
 from ullyses.coadd import COSSegmentList, STISSegmentList, CCDSegmentList
 from ullyses.coadd import SegmentList, Segment
 
-from .grating_priority import create_level4_products
+from .grating_priority import create_level4_products, GRATING_PRIORITIES_HASP, GRATING_PRIORITIES_HSLA
 
 CAL_VER = 0.1
 
@@ -537,7 +537,10 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
         print(f'Ullyses version {ullyses.__version__}')
     except:
         print('Ullyses version unavailable')
-    grating_priorities = None
+    if cross_program:
+        grating_priorities = GRATING_PRIORITIES_HSLA
+    else:
+        grating_priorities = GRATING_PRIORITIES_HASP
     if grating_table is not None:
         fg = open(grating_table)
         grating_priorities = json.load(fg)
@@ -627,7 +630,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
         if len(productlist) == 0:
             print("No products to abut for this target")
             return
-        abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities )
+        abutted_product = create_level4_products(productlist, productdict, grating_table=grating_priorities)
         if abutted_product is not None:
             level = 6
             filename = create_output_file_name(abutted_product, 'cross-program', level)
