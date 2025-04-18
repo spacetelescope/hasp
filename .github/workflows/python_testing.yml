@@ -6,8 +6,6 @@ name: HASP Pytest
 on: 
   push:
   pull_request:
-  schedule:
-    - cron: '00 00 * * *'  # every day at midnight
 
 jobs:
   build:
@@ -26,15 +24,15 @@ jobs:
             python-version: '3.11'
             toxenv: py311
 
-          - name: Python 3.10
+          - name: Python 3.12
             runs-on: ubuntu-latest
-            python-version: '3.10'
-            toxenv: py310
+            python-version: '3.12'
+            toxenv: py312
             
-          - name: Python 3.9
+          - name: Python 3.13
             runs-on: ubuntu-latest
-            python-version: '3.9'
-            toxenv: py39
+            python-version: '3.13'
+            toxenv: py313
             
     steps:
     - uses: actions/checkout@v4
