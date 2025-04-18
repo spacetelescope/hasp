@@ -225,6 +225,12 @@ def abut(product_short, product_long, transition_wavelength):
     product_abutted : SegmentList
         Product made by abutting product_short and product_long
     """
+    if product_long is not None and not hasattr(product_long, 'product_type'):
+        product_long.product_type = 'ullyses'
+    if product_long is not None and not hasattr(product_long, 'lifetime_position'):
+        product_long.lifetime_position = None
+    if product_short is not None and not hasattr(product_short, 'lifetime_position'):
+        product_short.lifetime_position = None
     if product_short is not None and product_long is not None:
         if transition_wavelength == "bad":
             return None
