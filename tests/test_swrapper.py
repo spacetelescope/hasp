@@ -62,7 +62,7 @@ class TestWrapper():
         filename = program_name + '.tar.gz'
         _ = urllib.request.urlretrieve(url, filename)
         data_tarfile = tarfile.open(filename, mode='r|gz')
-        data_tarfile.extractall()
+        data_tarfile.extractall(filter='data')
         return
 
     def run_wrapper(self, program):
