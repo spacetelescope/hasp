@@ -539,7 +539,7 @@ class HASP_CCDSegmentList(CCDSegmentList, HASP_SegmentList):
 
 
 def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filtering=False, cross_program=False,
-         grating_table=None):
+         grating_table=None, target_name=None):
     # Find out which unique modes are present
     # For single visit products, a unique mode is
     # (target, instrument, grating, detector, visit)
@@ -558,7 +558,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     if grating_table is not None:
         fg = open(grating_table)
         grating_priorities = json.load(fg)
-        fg.close() 
+        fg.close()
     uniqmodes = []
     uniqvisitmodes = []
     uniqproposalmodes = []
@@ -630,7 +630,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     visitlist.sort()
     proposallist.sort()
 
-    
+
     if cross_program:
         print("Creating these single grating products for each lifetime position")
         print("Mode              Detector      Lifetime Position")
@@ -644,9 +644,10 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
         productlist, productdict = create_cross_program_products('cross-program',
                                                                  uniqlpindependentmodes,
                                                                  lpindependentdict, indir,
-                                                                 snrmax, threshold, outdir, clobber, 
+                                                                 snrmax, threshold, outdir, clobber,
                                                                  keyword_filters,
-                                                                 write_products=False)
+                                                                 write_products=False,
+                                                                 target_name=target_name)
         if len(productlist) == 0:
             print("No products to abut for this target")
             return
@@ -794,7 +795,7 @@ def create_products(product_type, product_type_list, product_type_dict, indir, s
     return
 
 def create_cross_program_products(product_type, thisprodandtargetspec, product_type_dict, indir, snrmax,
-                                  threshold, outdir, clobber, keyword_filters, write_products=True):
+                                  threshold, outdir, clobber, keyword_filters, write_products=True, target_name=None):
     # For cross-program products, we need to make single grating products for each distinct Lifetime Position (LP)
     # for COS.  These should have names like hst_cos_targetname_grating_lpnn_cspec.fits.  If there is only 1 LP
     # product for a COS grating, or if the product is for STIS data, the filename should omit the _lpnn part.
@@ -807,7 +808,8 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     real_indir = os.path.realpath(indir)
-    target_name = real_indir.split('/')[-1]
+    if not target_name:
+        target_name = real_indir.split('/')[-1]
     modes_with_more_than_1_lp = []
     lp_independent_modes = []
     for mode in thisprodandtargetspec:
@@ -1135,24 +1137,24 @@ def prefilter(file_list, filters):
 
 def check_for_moving_targets(files_to_import):
     """Program level products are not made for moving targets
-    
+
     This function removes files with moving targets from the list of input files and returns
     a list without these files
 
     Moving target have primary header keyword MTFLAG set to 'T'
-    
+
     Parameters
     ----------
-    
+
     files_to_import : list
         List of files to search for moving targets
-        
+
     Returns
     -------
-    
+
     not_moving : list
         List of files with non-moving targets
-    
+
     """
     not_moving = []
     for fitsfile in files_to_import:
@@ -1252,10 +1254,13 @@ def call_main():
     parser.add_argument("-g", "--grating_table",
                         default=None,
                         help="Name of grating priority file [None]")
+    parser.add_argument("-n", "--target_name",
+                        default=None,
+                        help="Target name [use directory name]")
     args = parser.parse_args()
 
     main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering,
-         args.cross_program, args.grating_table)
+         args.cross_program, args.grating_table, args.target_name)
 
 
 if __name__ == '__main__':
