@@ -15,16 +15,32 @@ To run:
     swrapper -i . -o products -t threshold
 
 ```
-    -i --input_directory
+    -i INDIR, --input_directory INDIR
 
         The name of the directory containing the individual exposures to
         be coadded
 
-    -o --output_directory
+    -o OUTDIR, --output_directory OUTDIR
 
-        The name of the directory containing the coadded spectral products
+        The name of the directory that will contain the coadded spectral products
 
-    -t --threshold
+    -t THRESHOLD, --threshold THRESHOLD
 
         Threshold for flux-based filtering.  Optional, default value is -50
+
+    -c, --clobber
+
+        If set, overwrite existing products
+
+    -s SNRMAX, --snrmax SNRMAX
+        Maximum SNR per pixel for flux-based filtering
+
+    -k, --no_keyword_filtering
+        Disable keyword-based filtering (except for STIS PRISM data, which is always filtered)
+
+    -x, --cross_program
+        Create cross-program (HSLA) products only
+
+    -g GRATING_TABLE, --grating_table GRATING_TABLE
+        Name of custom grating priority table
 ```
