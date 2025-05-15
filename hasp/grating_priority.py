@@ -95,9 +95,9 @@ def create_level4_products(productlist, productdict, grating_table=GRATING_PRIOR
         min_wavelength = max(actual_minwave, grating['minwave'])
         max_wavelength = min(actual_maxwave, grating['maxwave'])
         if min_wavelength != grating['minwave']:
-            print(f'Minimum wavelength of {grating['name']} tweaked to {min_wavelength}')
+            print(f"Minimum wavelength of {grating['name']} tweaked to {min_wavelength}")
         if max_wavelength != grating['maxwave']:
-            print(f'Maximum wavelength of {grating['name']} tweaked to {max_wavelength}')
+            print(f"Maximum wavelength of {grating['name']} tweaked to {max_wavelength}")
         transition_wavelengths.append({'grating': grating['name'],
                                        'wavelength': min_wavelength,
                                        'delta': grating['score']})
