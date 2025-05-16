@@ -19,13 +19,13 @@ from ullyses.coadd import SegmentList, Segment
 
 from .grating_priority import create_level4_products, GRATING_PRIORITIES_HASP, GRATING_PRIORITIES_HSLA
 
-CAL_VER = 0.1
+CAL_VER = hasp.__version__
 
 EXCLUDED_TARGETS = ['ANY', 'WAVE']
 
 PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
               'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM',
-              'COSBOA']
+              'COSBOA', 'EXCLUDEWAVE']
 
 BAD_SEGMENTS = {'COS/G230L': 'NUVC'}
 
@@ -85,6 +85,7 @@ class HASP_SegmentList(SegmentList):
             print('Processing file {}'.format(datafile))
             with fits.open(datafile) as f1:
                 prihdr = f1[0].header
+                nextend = prihdr['NEXTEND']
                 for extension in f1[1:]:
                     if extension.header['EXTNAME'] == 'SCI':
                         hdr1 = extension.header
@@ -95,7 +96,7 @@ class HASP_SegmentList(SegmentList):
                         self.datasets.append(datafile)
                         self.num_exp += 1
                         extver = extension.header['extver']
-                        if extver > 1:
+                        if nextend > 1:
                             expname = extension.header['EXPNAME']
                             print(f'Extension {extver} with expname {expname} included for file {datafile}')
 
@@ -153,6 +154,9 @@ class HASP_SegmentList(SegmentList):
                     if self.instrument == "STIS" and (sdqflags & 16) == 16:
                         sdqflags -= 16
                     exptime = hdr1['EXPTIME']
+                    segment_name = ""
+                    if self.instrument == "STIS":
+                        segment_name = hdr1["EXPNAME"]
                     for rownum, row in enumerate(data):
                         # Filter out bad COS segments
                         if setting in BAD_SEGMENTS.keys():
@@ -161,11 +165,18 @@ class HASP_SegmentList(SegmentList):
                                 continue
                         segment = Segment()
                         segment.data = row
+                        segment.instrument = instrument
+                        if instrument == "COS":
+                            segment_name = row["SEGMENT"]
                         segment.sdqflags = sdqflags
                         segment.exptime = exptime
                         segment.filename = self.datasets[i]
                         segment.rownum = rownum
                         segment.lifetime_position = lifetime_position
+                        segment.name = segment_name
+                        segment.spectral_order = 1
+                        if instrument == "STIS":
+                            segment.spectral_order = row['SPORDER']
                         self.members.append(segment)
         return
 
@@ -454,19 +465,22 @@ class HASP_SegmentList(SegmentList):
             rownum = 0
             ndeviations = len(segment.data)
             a0 = np.zeros(1)
-            return [filename], [rownum], [ndeviations], a0, a0, a0, a0
+            return [segment], [rownum], [ndeviations], a0, a0, a0, a0
         mean_deviation = np.zeros(nsegments)
         median_deviation = np.zeros(nsegments)
         mean_squared_deviation = np.zeros(nsegments)
         median_squared_deviation = np.zeros(nsegments)
         ndeviations = np.zeros(nsegments, dtype='int')
-        filename = []
+        list_of_segments = []
         rownum = []
         for nseg, segment in enumerate(self.members):
             goodpixels = np.where((segment.data['dq'] & segment.sdqflags) == 0)
             if len(goodpixels[0]) == 0:
-                print('No good pixels for segment #{}'.format(nseg))
-                filename.append(segment.filename)
+                if segment.instrument == "COS":
+                    print(f"No good pixels for segment {segment.name} from file {segment.filename}")
+                elif segment.instrument == "STIS":
+                    print(f"No good pixels for order #{segment.spectral_order} of segment {segment.name} from file {segment.filename}")
+                list_of_segments.append(segment)
                 rownum.append(segment.rownum)
                 continue
             wavelength = segment.data['wavelength'][goodpixels]
@@ -494,8 +508,8 @@ class HASP_SegmentList(SegmentList):
                 mean_squared_deviation[nseg] = deviation_squared[nonzero_deviations].mean()
                 median_deviation[nseg] = np.median(sorted_nonzero_deviations)
                 median_squared_deviation[nseg] = np.median(sorted_nonzero_squared_deviations)
-                filename.append(segment.filename)
-                rownum.append(segment.rownum)
+                list_of_segments.append(segment)
+                rownum.append(segment.name)
             else:
                 mean_deviation[nseg] = 0.0
                 median_deviation[nseg] = 0.0
@@ -509,7 +523,7 @@ class HASP_SegmentList(SegmentList):
                 print(f'Median deviation = {median_deviation[nseg]}')
                 print(f'Median squared deviation = {median_squared_deviation[nseg]}')
 
-        return filename, rownum, ndeviations, mean_deviation, median_deviation, mean_squared_deviation, median_squared_deviation
+        return list_of_segments, rownum, ndeviations, mean_deviation, median_deviation, mean_squared_deviation, median_squared_deviation
 
 
 class HASP_COSSegmentList(COSSegmentList, HASP_SegmentList):
@@ -618,9 +632,15 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
 
     
     if cross_program:
+        print("Creating these single grating products for each lifetime position")
+        print("Mode              Detector      Lifetime Position")
+        print("-------------------------------------------------")
         _, _ = create_cross_program_products('cross-program', uniqmodes,singletargetdict,
                                              indir,snrmax, threshold, outdir, clobber,
                                              keyword_filters, write_products=True)
+        print("Creating these single grating products that will be used in the abutted products")
+        print("Mode              Detector")
+        print("--------------------------")
         productlist, productdict = create_cross_program_products('cross-program',
                                                                  uniqlpindependentmodes,
                                                                  lpindependentdict, indir,
@@ -797,8 +817,12 @@ def create_cross_program_products(product_type, thisprodandtargetspec, product_t
                 modes_with_more_than_1_lp.append(lpindependentmode)
         else:
             lp_independent_modes.append(lpindependentmode)
-    print(thisprodandtargetspec)
-    print(modes_with_more_than_1_lp)
+    for uniqmode in thisprodandtargetspec:
+        instrument_mode = f"{uniqmode[0]}/{uniqmode[1]}"
+        if len(uniqmode) == 4:
+            print(f"{instrument_mode:14}    {uniqmode[2]:8}      {uniqmode[3]:8d}")
+        elif len(uniqmode) == 3:
+            print(f"{instrument_mode:14}    {uniqmode[2]:8}")
     print(f'Creating cross-program products for target {target_name}')
     for uniqmode in thisprodandtargetspec:
         files_to_import = product_type_dict[uniqmode]
@@ -903,19 +927,20 @@ def get_lifetime_position(prihdr):
 
 def analyse_result(results, threshold=-50):
     files_to_cull = []
-    input_filenames = results[0]
+    list_of_segments = results[0]
     row_numbers = results[1]
     npts = results[2]
     median_deviation = results[4]
     scaledmedian = median_deviation * np.sqrt(npts)
     rows_to_cull = np.where(scaledmedian < threshold)
     for row in rows_to_cull[0]:
-        filename = input_filenames[row]
+        segment = list_of_segments[row]
+        filename = segment.filename
         rownum = row_numbers[row]
-        print(f'Segment #{rownum} from file {filename} has scaled median = {scaledmedian[row]}')
-        if input_filenames[row] not in files_to_cull:
+        print(f'Order {segment.spectral_order} from segment {segment.name} in file {filename} has scaled median = {scaledmedian[row]}')
+        if filename not in files_to_cull:
             print(f'Removing file {filename} from product')
-            files_to_cull.append(input_filenames[row])
+            files_to_cull.append(filename)
         else:
             print(f'File {filename} already selected for removal from product')
     return files_to_cull
@@ -925,10 +950,6 @@ def cull_files(files_to_cull, file_list):
     for thisfile in files_to_cull:
         if thisfile in file_list:
             file_list.remove(thisfile)
-
-PREFILTERS = ['EXPFLAG', 'ZEROEXPTIME', 'PLANNEDVSACTUAL', 'MOVINGTARGET', 'NOTFINELOCK',
-              'POSTARG1', 'POSTARG2', 'DITHERPERPENDICULARTOSLIT', 'MOSAICPURPOSE', 'PRISM',
-              'COSBOA']
 
 def prefilter(file_list, filters):
     """Pre-filter the input exposure filenames
@@ -956,6 +977,8 @@ def prefilter(file_list, filters):
     'PRISM': Filter STIS exposures with OPT_ELEM = PRISM
 
     'COSBOA': Filter COS exposures with APERTURE = BOA (Bright Object Aperture)
+
+    'EXCLUDEWAVE' : Filter exposures with TARGNAME = WAVE (Wavecal exposures)
 
     """
 
@@ -1095,6 +1118,16 @@ def prefilter(file_list, filters):
                     print(f'File {fitsfile} removed from products because COS APERTURE = BOA')
             else:
                 goodfiles.append(fitsfile)
+        file_list = goodfiles
+
+    if 'EXCLUDEWAVE' in filters:
+        goodfiles = []
+        for fitsfile in file_list:
+            target_name = fits.getval(fitsfile, 'TARGNAME')
+            if target_name != 'WAVE':
+                goodfiles.append(fitsfile)
+            else:
+                print(f"File {fitsfile} removed from peoducts because TARGNAME = WAVE")
         file_list = goodfiles
 
     return goodfiles

@@ -77,7 +77,7 @@ class TestWrapper():
         all_ok = True
         fitsdiff_report = ''
         keywords_to_ignore = ['DATE', 'FITS_SW', 'FILENAME',
-                              'HLSP_VER', 'S_REGION']
+                              'HLSP_VER', 'S_REGION', 'CAL_VER']
         new_hlsps = glob.glob(program + '/input/hst_*')
         for new_product in new_hlsps:
             truth_filename = self.get_truth_filename(program, new_product)
