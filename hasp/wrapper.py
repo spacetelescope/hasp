@@ -1256,7 +1256,7 @@ def call_main():
                         help="Name of grating priority file [None]")
     parser.add_argument("-n", "--target_name",
                         default=None,
-                        help="Target name [use directory name]")
+                        help="Target name (cross-program products only) [use directory name]")
     args = parser.parse_args()
 
     main(args.indir, args.outdir, args.clobber, args.threshold, args.snrmax, args.no_keyword_filtering,
