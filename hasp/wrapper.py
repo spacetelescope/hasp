@@ -83,7 +83,7 @@ class HASP_SegmentList(SegmentList):
         self.aperturelist = []
         for datafile in file_list:
             print('Processing file {}'.format(datafile))
-            with fits.open(datafile) as f1:
+            with fits.open(datafile, memmap=False) as f1:
                 prihdr = f1[0].header
                 nextend = prihdr['NEXTEND']
                 for extension in f1[1:]:
@@ -584,7 +584,7 @@ def main(indir, outdir, clobber=False, threshold=-50, snrmax=20, no_keyword_filt
     lifetime_positions = []
     print('Creating list of unique modes from these files:')
     for myfile in spec1d:
-        f1 = fits.open(myfile)
+        f1 = fits.open(myfile, memmap=False)
         prihdr = f1[0].header
         instrument = prihdr['INSTRUME']
         grating = prihdr['OPT_ELEM']
@@ -1160,7 +1160,7 @@ def check_for_moving_targets(files_to_import):
     """
     not_moving = []
     for fitsfile in files_to_import:
-        f1 = fits.open(fitsfile)
+        f1 = fits.open(fitsfile, memmap=False)
         prihdr = f1[0].header
         mtflag = prihdr['MTFLAG']
         if mtflag != 'T':
