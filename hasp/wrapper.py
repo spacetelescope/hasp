@@ -277,12 +277,6 @@ class HASP_SegmentList(SegmentList):
         else:
             hdr1['SNR_IR'] = ("N/A", 'Median SNR in IR range [10000A-)')
 
-        # print("SNR_FUV: ", f"{np.median(snr[fuv_mask]):.2f}")
-        # print("SNR_NUV: ", f"{np.median(snr[nuv_mask]):.2f}")
-        # print("SNR_OPT: ", f"{np.median(snr[opt_mask]):.2f}")
-        # print("SNR_IR: ", f"{np.median(snr[ir_mask]):.2f}")
-
-
         # Table with co-added spectrum
         cw = fits.Column(name='WAVELENGTH', format=rpt+'E', unit="Angstrom")
         cf = fits.Column(name='FLUX', format=rpt+'E', unit="erg /s /cm**2 /Angstrom")
