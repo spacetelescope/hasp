@@ -251,6 +251,36 @@ class HASP_SegmentList(SegmentList):
             last = nelements
         rpt = str(nelements)
 
+        # SNR wavelength masks
+        wl = self.output_wavelength[first:last].copy()
+        snr = self.signal_to_noise[first:last].copy()
+        fuv_mask = (wl >= 900.) & (wl < 2000.)
+        nuv_mask = (wl >= 2000.) & (wl < 4000.)
+        opt_mask = (wl >= 4000.) & (wl < 10000.)
+        ir_mask = (wl >= 10000.)
+
+        # populate extension 1 header with SNR keywords
+        if fuv_mask.any():
+            hdr1['SNR_FUV'] = (f"{np.median(snr[fuv_mask]):.2f}", 'Median SNR in FUV range [900-2000A)')
+        else:
+            hdr1['SNR_FUV'] = ("N/A", 'Median SNR in FUV range [900-2000A)')
+        if nuv_mask.any():
+            hdr1['SNR_NUV'] = (f"{np.median(snr[nuv_mask]):.2f}", 'Median SNR in NUV range [2000-4000A)')
+        else:
+            hdr1['SNR_NUV'] = ("N/A", 'Median SNR in NUV range [2000-4000A)')
+        if opt_mask.any():
+            hdr1['SNR_OPT'] = (f"{np.median(snr[opt_mask]):.2f}", 'Median SNR in optical range [4000-10000A)')
+        else:
+            hdr1['SNR_OPT'] = ("N/A", 'Median SNR in optical range [4000-10000A)')
+        if ir_mask.any():
+            hdr1['SNR_IR'] = (f"{np.median(snr[ir_mask]):.2f}", 'Median SNR in IR range [10000A-)')
+        else:
+            hdr1['SNR_IR'] = ("N/A", 'Median SNR in IR range [10000A-)')
+
+        # print("SNR_FUV: ", f"{np.median(snr[fuv_mask]):.2f}")
+        # print("SNR_NUV: ", f"{np.median(snr[nuv_mask]):.2f}")
+        # print("SNR_OPT: ", f"{np.median(snr[opt_mask]):.2f}")
+        # print("SNR_IR: ", f"{np.median(snr[ir_mask]):.2f}")
 
 
         # Table with co-added spectrum
@@ -268,18 +298,6 @@ class HASP_SegmentList(SegmentList):
         table1.data['ERROR'] = self.output_errors[first:last].copy()
         table1.data['SNR'] = self.signal_to_noise[first:last].copy()
         table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
-
-        # SNR wavelength masks
-        fuv_wavs = (table1.data['WAVELENGTH'] >= 900.) & (table1.data['WAVELENGTH'] < 2000.)
-        nuv_wavs = (table1.data['WAVELENGTH'] >= 2000.) & (table1.data['WAVELENGTH'] < 4000.)
-        opt_wavs = (table1.data['WAVELENGTH'] >= 4000.) & (table1.data['WAVELENGTH'] < 10000.)
-        ir_wavs = (table1.data['WAVELENGTH'] >= 10000.)
-
-        # populate extension 1 header with SNR keywords
-        hdr1['SNR_FUV'] = (np.median(table1.data['SNR'][fuv_wavs]), 'Median SNR in FUV range [900-2000A)')
-        hdr1['SNR_NUV'] = (np.median(table1.data['SNR'][nuv_wavs]), 'Median SNR in NUV range [2000-4000A)')
-        hdr1['SNR_OPT'] = (np.median(table1.data['SNR'][opt_wavs]), 'Median SNR in optical range [4000-10000A)')
-        hdr1['SNR_IR'] = (np.median(table1.data['SNR'][ir_wavs]), 'Median SNR in IR range [10000A-)')
 
         # HLSP primary header
         hdr0 = fits.Header()
