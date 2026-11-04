@@ -251,6 +251,8 @@ class HASP_SegmentList(SegmentList):
             last = nelements
         rpt = str(nelements)
 
+
+
         # Table with co-added spectrum
         cw = fits.Column(name='WAVELENGTH', format=rpt+'E', unit="Angstrom")
         cf = fits.Column(name='FLUX', format=rpt+'E', unit="erg /s /cm**2 /Angstrom")
@@ -266,6 +268,19 @@ class HASP_SegmentList(SegmentList):
         table1.data['ERROR'] = self.output_errors[first:last].copy()
         table1.data['SNR'] = self.signal_to_noise[first:last].copy()
         table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
+
+        # SNR wavelength masks
+        fuv_wavs = (table1.data['WAVELENGTH'] >= 900.) & (table1.data['WAVELENGTH'] < 2000.)
+        nuv_wavs = (table1.data['WAVELENGTH'] >= 2000.) & (table1.data['WAVELENGTH'] < 4000.)
+        opt_wavs = (table1.data['WAVELENGTH'] >= 4000.) & (table1.data['WAVELENGTH'] < 10000.)
+        ir_wavs = (table1.data['WAVELENGTH'] >= 10000.)
+
+        # populate extension 1 header with SNR keywords
+        hdr1['SNR_FUV'] = (np.median(table1.data['SNR'][fuv_wavs]), 'Median SNR in FUV range [900-2000A)')
+        hdr1['SNR_NUV'] = (np.median(table1.data['SNR'][nuv_wavs]), 'Median SNR in NUV range [2000-4000A)')
+        hdr1['SNR_OPT'] = (np.median(table1.data['SNR'][opt_wavs]), 'Median SNR in optical range [4000-10000A)')
+        hdr1['SNR_IR'] = (np.median(table1.data['SNR'][ir_wavs]), 'Median SNR in IR range [10000A-)')
+
         # HLSP primary header
         hdr0 = fits.Header()
         hdr0['EXTEND'] = ('T', 'FITS file may contain extensions')
