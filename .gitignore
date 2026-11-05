@@ -11,4 +11,3 @@ __pycache__/
 pip-wheel-metadata
 *idea
 hasp/_version.py
-.vscode/
