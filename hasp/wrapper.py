@@ -251,7 +251,7 @@ class HASP_SegmentList(SegmentList):
             last = nelements
         rpt = str(nelements)
 
-        # SNR wavelength masks
+        # define SNR wavelength masks
         wl = self.output_wavelength[first:last].copy()
         snr = self.signal_to_noise[first:last].copy()
         fuv_mask = (wl >= 900.) & (wl < 2000.)
