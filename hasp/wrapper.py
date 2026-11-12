@@ -251,13 +251,13 @@ class HASP_SegmentList(SegmentList):
             last = nelements
         rpt = str(nelements)
 
-        # define SNR wavelength masks
+        # define SNR wavelength masks and filter out zero SNR regions
         wl = self.output_wavelength[first:last].copy()
         snr = self.signal_to_noise[first:last].copy()
-        fuv_mask = (wl >= 900.) & (wl < 2000.)
-        nuv_mask = (wl >= 2000.) & (wl < 4000.)
-        opt_mask = (wl >= 4000.) & (wl < 10000.)
-        ir_mask = (wl >= 10000.)
+        fuv_mask = (wl >= 900.) & (wl < 2000.) & (snr > 0.)
+        nuv_mask = (wl >= 2000.) & (wl < 4000.) & (snr > 0.)
+        opt_mask = (wl >= 4000.) & (wl < 10000.) & (snr > 0.)
+        ir_mask = (wl >= 10000.) & (snr > 0.)
 
         # populate extension 1 header with SNR keywords
         if fuv_mask.any():
