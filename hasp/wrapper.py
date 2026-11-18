@@ -251,6 +251,32 @@ class HASP_SegmentList(SegmentList):
             last = nelements
         rpt = str(nelements)
 
+        # define SNR wavelength masks and filter out zero SNR regions
+        wl = self.output_wavelength[first:last].copy()
+        snr = self.signal_to_noise[first:last].copy()
+        fuv_mask = (wl >= 900.) & (wl < 2000.) & (snr > 0.)
+        nuv_mask = (wl >= 2000.) & (wl < 4000.) & (snr > 0.)
+        opt_mask = (wl >= 4000.) & (wl < 10000.) & (snr > 0.)
+        ir_mask = (wl >= 10000.) & (snr > 0.)
+
+        # populate extension 1 header with SNR keywords
+        if fuv_mask.any():
+            hdr1['SNR_FUV'] = (f"{np.median(snr[fuv_mask]):.2f}", 'Median SNR in FUV range [900-2000A)')
+        else:
+            hdr1['SNR_FUV'] = ("N/A", 'Median SNR in FUV range [900-2000A)')
+        if nuv_mask.any():
+            hdr1['SNR_NUV'] = (f"{np.median(snr[nuv_mask]):.2f}", 'Median SNR in NUV range [2000-4000A)')
+        else:
+            hdr1['SNR_NUV'] = ("N/A", 'Median SNR in NUV range [2000-4000A)')
+        if opt_mask.any():
+            hdr1['SNR_OPT'] = (f"{np.median(snr[opt_mask]):.2f}", 'Median SNR in optical range [4000-10000A)')
+        else:
+            hdr1['SNR_OPT'] = ("N/A", 'Median SNR in optical range [4000-10000A)')
+        if ir_mask.any():
+            hdr1['SNR_IR'] = (f"{np.median(snr[ir_mask]):.2f}", 'Median SNR in IR range [10000A-)')
+        else:
+            hdr1['SNR_IR'] = ("N/A", 'Median SNR in IR range [10000A-)')
+
         # Table with co-added spectrum
         cw = fits.Column(name='WAVELENGTH', format=rpt+'E', unit="Angstrom")
         cf = fits.Column(name='FLUX', format=rpt+'E', unit="erg /s /cm**2 /Angstrom")
@@ -266,6 +292,7 @@ class HASP_SegmentList(SegmentList):
         table1.data['ERROR'] = self.output_errors[first:last].copy()
         table1.data['SNR'] = self.signal_to_noise[first:last].copy()
         table1.data['EFF_EXPTIME'] = self.output_exptime[first:last].copy()
+
         # HLSP primary header
         hdr0 = fits.Header()
         hdr0['EXTEND'] = ('T', 'FITS file may contain extensions')
